@@ -25,6 +25,7 @@ from saas_app import (
     resolve_public_hostname,
     send_smtp_email,
     send_tenant_admin_recovery_code,
+    superadmin_tenants,
     subscription_revenue_report,
     subscription_revenue_summary,
     request_global_tenant_email_code,
@@ -373,6 +374,36 @@ class AdminRecoveryCodeTests(unittest.TestCase):
 
         self.assertEqual(error.exception.status_code, 404)
         request_code.assert_not_called()
+
+
+class SuperAdminTenantListTests(unittest.TestCase):
+    @patch("saas_app.connect_db")
+    def test_includes_authorized_admin_email_for_recovery(self, connect_db):
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchall.return_value = [
+            (
+                uuid4(),
+                "panaderia-central",
+                "Panadería Central",
+                "active",
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+                "random-menu-token",
+                "monthly",
+                "active",
+                "starter",
+                "Inicial",
+                10000,
+                100000,
+                "admin@example.test",
+            )
+        ]
+        connect_db.return_value = connection
+
+        tenants = superadmin_tenants({})
+
+        self.assertEqual(tenants[0]["admin_email"], "admin@example.test")
+        self.assertEqual(connection.execute.call_args.args[1], ("ADMIN_PANADERIA",))
 
 
 class NeonTokenVerificationTests(unittest.TestCase):
