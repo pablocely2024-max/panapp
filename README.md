@@ -136,7 +136,7 @@ The [cookie policy](./cookie-policy.html) describes the essential HttpOnly sessi
 
 When this project is opened as a VS Code folder, the `PANAPP: sincronizar cambios con GitHub` background task watches for edits. After five seconds without saves, it creates a commit and pushes it to `origin/main`. The watcher only stages selected source, test, documentation, and configuration extensions; it excludes `.env*`, local virtual environments, private-key/credential-named files, and `.vscode/settings.json`. Manually staged changes pause the automatic commit so they are not mixed in. If the task does not start, use **Terminal → Run Task → PANAPP: sincronizar cambios con GitHub** and allow automatic tasks for this trusted workspace.
 
-GitHub still receives every committed change, so do not place secrets in source files. Keep credentials in Render/Neon environment settings or ignored local environment files.
+GitHub still receives every committed change, so do not place secrets in source files. Keep credentials in Render/Neon environment settings or ignored local environment files. The watcher uses the existing Git credentials and retries failed pushes every 30 seconds; errors appear in the task terminal.
 
 ## Tenant operations and public orders
 
