@@ -2137,7 +2137,9 @@ def global_tenant_login(body: LoginBody, request: Request, response: Response):
         ).fetchall()
     matches = [
         row for row in rows
-        if hmac.compare_digest(
+        if row[2] is not None
+        and row[3] is not None
+        and hmac.compare_digest(
             password_hash(body.password, bytes.fromhex(row[2])),
             row[3],
         )
@@ -2165,8 +2167,6 @@ def global_tenant_login(body: LoginBody, request: Request, response: Response):
 @app.post("/t/{slug}/api/security/login")
 def tenant_login(slug: str, body: LoginBody, request: Request, response: Response):
     require_same_origin(request)
-    if NEON_AUTH_URL:
-        raise HTTPException(status_code=410, detail="El acceso de panadería ahora se gestiona con Neon Auth.")
     tenant = tenant_by_slug(slug)
     address = request.client.host if request.client else "unknown"
     if not allow_login_attempt(address):
@@ -2179,7 +2179,7 @@ def tenant_login(slug: str, body: LoginBody, request: Request, response: Respons
             """,
             (uuid.UUID(tenant["id"]), body.username.strip().lower()),
         ).fetchone()
-    if not row:
+    if not row or row[2] is None or row[3] is None:
         record_login_failure(address)
         raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos.")
     candidate = password_hash(body.password, bytes.fromhex(row[2]))
@@ -2287,8 +2287,6 @@ def tenant_logout(slug: str, request: Request, response: Response):
 def tenant_password(slug: str, request: Request, response: Response, body: dict):
     tenant = tenant_by_slug(slug)
     identity = require_tenant_admin(request, tenant["id"])
-    if NEON_AUTH_URL:
-        raise HTTPException(status_code=410, detail="La contraseña de esta cuenta se gestiona con Neon Auth.")
     current_password = str(body.get("current_password", ""))
     new_password = str(body.get("new_password", ""))
     if not 12 <= len(new_password) <= 256:
@@ -2301,7 +2299,12 @@ def tenant_password(slug: str, request: Request, response: Response, body: dict)
             """,
             (uuid.UUID(identity["principal_id"]), uuid.UUID(tenant["id"])),
         ).fetchone()
-        if not row or not hmac.compare_digest(password_hash(current_password, bytes.fromhex(row[0])), row[1]):
+        if (
+            not row
+            or row[0] is None
+            or row[1] is None
+            or not hmac.compare_digest(password_hash(current_password, bytes.fromhex(row[0])), row[1])
+        ):
             raise HTTPException(status_code=403, detail="La contraseña actual no es correcta.")
         salt = secrets.token_bytes(32)
         connection.execute(
