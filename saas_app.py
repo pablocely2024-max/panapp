@@ -807,8 +807,7 @@ def issue_session(response: Response, request: Request, principal_type: str, pri
             """
             INSERT INTO panapp_sessions
                 (token_hash, principal_type, principal_id, panaderia_id, role, expires_at, last_activity_at)
-            VALUES (%s, %s, %s, %s, %s, NOW() + (%s * INTERVAL '1 hour'))
-            ON CONFLICT (token_hash) DO NOTHING
+            VALUES (%s, %s, %s, %s, %s, NOW() + (%s * INTERVAL '1 hour'), NOW())
             """,
             (
                 hash_token(token),
