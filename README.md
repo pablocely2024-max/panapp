@@ -132,6 +132,12 @@ Super Admin can review the latest 100 payment records per bakery and download a 
 Super-admin passwords are hashed with PBKDF2-HMAC-SHA256; tenant passwords are managed by Neon Auth. PANAPP sessions are stored in PostgreSQL, expire after eight hours, and are revoked when a tenant is suspended or canceled.
 The [cookie policy](./cookie-policy.html) describes the essential HttpOnly session cookies; PANAPP does not use advertising or analytics cookies.
 
+## Automatic GitHub sync
+
+When this project is opened as a VS Code folder, the `PANAPP: sincronizar cambios con GitHub` background task watches for edits. After five seconds without saves, it creates a commit and pushes it to `origin/main`. The watcher only stages selected source, test, documentation, and configuration extensions; it excludes `.env*`, local virtual environments, private-key/credential-named files, and `.vscode/settings.json`. Manually staged changes pause the automatic commit so they are not mixed in. If the task does not start, use **Terminal → Run Task → PANAPP: sincronizar cambios con GitHub** and allow automatic tasks for this trusted workspace.
+
+GitHub still receives every committed change, so do not place secrets in source files. Keep credentials in Render/Neon environment settings or ignored local environment files.
+
 ## Tenant operations and public orders
 
 The bakery dashboard remains at `/t/{slug}/admin` and reads/writes that tenant's JSONB state row. The menu endpoint `/t/{slug}/api/menu` is an allow-listed public projection: it never returns provider records, recipes/costs, inventory costs, sales, shrinkage, or special orders.

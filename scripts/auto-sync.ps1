@@ -40,8 +40,16 @@ function Test-SyncablePath {
 function Invoke-Git {
     param([string[]]$Arguments)
 
-    $output = & git @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = & git @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($exitCode -ne 0) {
         $details = ($output | Out-String).Trim()
         throw "git $($Arguments -join ' ') falló. $details"
     }
