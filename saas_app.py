@@ -390,6 +390,29 @@ def initialize_database() -> None:
             WHERE used_at IS NULL
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS panapp_email_codes (
+                challenge_id UUID PRIMARY KEY,
+                code_hash TEXT NOT NULL,
+                user_id UUID NOT NULL REFERENCES panapp_users(user_id),
+                panaderia_id UUID NOT NULL REFERENCES panapp_tenants(panaderia_id),
+                email TEXT NOT NULL,
+                requester_ip TEXT NOT NULL,
+                attempts SMALLINT NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 5),
+                expires_at TIMESTAMPTZ NOT NULL,
+                used_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS panapp_email_codes_pending_idx
+            ON panapp_email_codes (user_id, email, expires_at)
+            WHERE used_at IS NULL
+            """
+        )
         connection.execute("ALTER TABLE panapp_users ALTER COLUMN salt DROP NOT NULL")
         connection.execute("ALTER TABLE panapp_users ALTER COLUMN password_hash DROP NOT NULL")
         connection.execute("ALTER TABLE panapp_users ADD COLUMN IF NOT EXISTS auth_subject TEXT")
