@@ -829,7 +829,7 @@ def create_admin_invitation(connection, user_id: uuid.UUID, tenant_id: uuid.UUID
     return token
 
 
-def send_admin_invitation(email: str, tenant_name: str, invitation_url: str) -> bool:
+def send_smtp_email(email: str, subject: str, content: str) -> bool:
     host = os.environ.get("PANAPP_SMTP_HOST", "").strip()
     username = os.environ.get("PANAPP_SMTP_USER", "").strip()
     password = os.environ.get("PANAPP_SMTP_PASSWORD", "")
@@ -840,21 +840,10 @@ def send_admin_invitation(email: str, tenant_name: str, invitation_url: str) -> 
     port = read_port_setting("PANAPP_SMTP_PORT", "587")
     use_ssl = os.environ.get("PANAPP_SMTP_USE_SSL", "").strip().lower() in {"1", "true", "yes"}
     message = EmailMessage()
-    message["Subject"] = f"Invitación de acceso a {tenant_name} · PANAPP"
+    message["Subject"] = subject
     message["From"] = sender
     message["To"] = email
-    message.set_content(
-        f"""Hola:
-
-Se autorizó tu correo como administrador de {tenant_name} en PANAPP.
-Abre el enlace seguro para crear o verificar tu cuenta y elegir tu contraseña:
-
-{invitation_url}
-
-El enlace vence en 7 días y solo se puede usar una vez. Por seguridad, PANAPP nunca envía contraseñas por correo.
-Si no esperabas esta invitación, ignora este mensaje.
-"""
-    )
+    message.set_content(content)
 
     if use_ssl:
         with smtplib.SMTP_SSL(host, port, timeout=15) as server:
@@ -868,6 +857,39 @@ Si no esperabas esta invitación, ignora este mensaje.
             server.login(username, password)
             server.send_message(message)
     return True
+
+
+def send_admin_invitation(email: str, tenant_name: str, invitation_url: str) -> bool:
+    return send_smtp_email(
+        email,
+        f"Invitación de acceso a {tenant_name} · PANAPP",
+        f"""Hola:
+
+Se autorizó tu correo como administrador de {tenant_name} en PANAPP.
+Abre el enlace seguro para verificar tu correo y configurar el acceso:
+
+{invitation_url}
+
+El enlace vence en 7 días y solo se puede usar una vez. Por seguridad, PANAPP nunca envía contraseñas por correo.
+Si no esperabas esta invitación, ignora este mensaje.
+""",
+    )
+
+
+def send_tenant_email_code(email: str, tenant_name: str, code: str) -> bool:
+    return send_smtp_email(
+        email,
+        f"Código de acceso a {tenant_name} · PANAPP",
+        f"""Hola:
+
+Tu código de verificación para {tenant_name} es:
+
+{code}
+
+Vence en 10 minutos y solo se puede usar una vez. Si no solicitaste este código, ignora este mensaje.
+PANAPP nunca te enviará una contraseña por correo.
+""",
+    )
 
 
 def deliver_admin_invitation(email: str, tenant_name: str, invitation_url: str) -> dict:
@@ -977,6 +999,15 @@ def asset(name: str) -> FileResponse:
 class LoginBody(BaseModel):
     username: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=256)
+
+
+class EmailCodeRequestBody(BaseModel):
+    username: str = Field(min_length=3, max_length=254)
+
+
+class EmailCodeVerifyBody(EmailCodeRequestBody):
+    code: str = Field(pattern=r"^\d{6}$")
+    password: str = Field(min_length=12, max_length=128)
 
 
 class TenantCreateBody(BaseModel):
