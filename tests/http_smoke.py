@@ -10,27 +10,19 @@ from http.cookiejar import CookieJar
 
 
 BASE_URL = os.environ.get("PANAPP_SMOKE_BASE_URL", "http://127.0.0.1:8765").rstrip("/")
-NEON_AUTH_URL = os.environ.get(
-    "PANAPP_NEON_AUTH_URL",
-    "https://ep-lucky-lake-b8de2v7l.neonauth.c-14.us-east-1.aws.neon.tech/neondb/auth",
-).rstrip("/")
 TENANT_SLUG = os.environ.get("PANAPP_SMOKE_TENANT_SLUG", "panaderia-principal")
 SUPERADMIN_EMAIL = os.environ.get("PANAPP_SUPERADMIN_EMAIL", "")
 SUPERADMIN_PASSWORD = os.environ.get("PANAPP_SUPERADMIN_PASSWORD", "")
 TENANT_EMAIL = os.environ.get("PANAPP_SMOKE_TENANT_EMAIL", "")
 TENANT_PASSWORD = os.environ.get("PANAPP_SMOKE_TENANT_PASSWORD", "")
-MUTATION_EMAIL = os.environ.get("PANAPP_SMOKE_MUTATION_EMAIL", "")
-MUTATION_PASSWORD = os.environ.get("PANAPP_SMOKE_MUTATION_PASSWORD", "")
 
 cookies = CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
 checked = []
 
 
-def request(method, path, payload=None, expected=200, auth_token=None):
+def request(method, path, payload=None, expected=200):
     headers = {"Accept": "application/json, text/html"}
-    if auth_token:
-        headers["Authorization"] = f"Bearer {auth_token}"
     body = None
     if payload is not None:
         headers["Content-Type"] = "application/json"
@@ -50,30 +42,6 @@ def request(method, path, payload=None, expected=200, auth_token=None):
     if "application/json" in content_type:
         return json.loads(data)
     return data.decode("utf-8", errors="replace")
-
-
-def neon_auth_token(email, password):
-    req = urllib.request.Request(
-        f"{NEON_AUTH_URL}/sign-in/email",
-        data=json.dumps({"email": email, "password": password}).encode("utf-8"),
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Origin": BASE_URL,
-            "Referer": f"{BASE_URL}/login",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            result = json.loads(response.read())
-    except (urllib.error.HTTPError, OSError, ValueError) as error:
-        raise AssertionError(f"Neon Auth sign-in failed ({type(error).__name__}).") from error
-    session = result.get("data", {}).get("session") or result.get("session") or {}
-    token = session.get("token")
-    if not isinstance(token, str) or not token:
-        raise AssertionError("Neon Auth did not return a signed session token.")
-    return token
 
 
 def main():
@@ -98,8 +66,10 @@ def main():
     request("GET", f"/api/superadmin/tenants/{TENANT_SLUG}/payments")
 
     request("GET", "/login")
-    token = neon_auth_token(TENANT_EMAIL, TENANT_PASSWORD)
-    global_login = request("POST", "/api/security/neon/session", {}, auth_token=token)
+    global_login = request("POST", "/api/security/login", {
+        "username": TENANT_EMAIL,
+        "password": TENANT_PASSWORD,
+    })
     if global_login["tenant"] != TENANT_SLUG:
         raise AssertionError(f"Global login resolved to {global_login['tenant']!r}, expected {TENANT_SLUG!r}")
     request("GET", f"/t/{global_login['tenant']}/admin")
@@ -107,12 +77,14 @@ def main():
     tenant = f"/t/{TENANT_SLUG}"
     request("GET", f"{tenant}/login")
     request("GET", f"{tenant}/auth.js")
-    request("GET", f"{tenant}/neon-auth.js")
     request("GET", f"{tenant}/menu")
     request("GET", f"{tenant}/menu.js")
     request("GET", f"{tenant}/api/menu")
     request("GET", f"{tenant}/api/security/status")
-    request("POST", f"{tenant}/api/security/neon/session", {}, auth_token=token)
+    request("POST", f"{tenant}/api/security/login", {
+        "username": TENANT_EMAIL,
+        "password": TENANT_PASSWORD,
+    })
     request("GET", f"{tenant}/admin")
     request("GET", f"{tenant}/admin.js")
     request("GET", f"{tenant}/api/state")
