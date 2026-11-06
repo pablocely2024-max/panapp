@@ -2285,6 +2285,7 @@ def tenant_logout(slug: str, request: Request, response: Response):
 
 @app.post("/t/{slug}/api/security/password")
 def tenant_password(slug: str, request: Request, response: Response, body: dict):
+    require_same_origin(request)
     tenant = tenant_by_slug(slug)
     identity = require_tenant_admin(request, tenant["id"])
     current_password = str(body.get("current_password", ""))

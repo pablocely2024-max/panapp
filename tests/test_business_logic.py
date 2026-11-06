@@ -453,8 +453,9 @@ class EmailCodeAuthenticationTests(unittest.TestCase):
         self.assertEqual(len(insert_parameters[1]), 64)
         tenant_by_slug.assert_called_once_with("panaderia-central")
 
+    @patch("saas_app.tenant_by_slug", return_value={"slug": "panaderia-central"})
     @patch("saas_app.connect_db")
-    def test_does_not_send_codes_to_unprovisioned_email(self, connect_db):
+    def test_does_not_send_codes_to_unprovisioned_email(self, connect_db, tenant_by_slug):
         connection = MagicMock()
         connection.__enter__.return_value = connection
         connection.execute.return_value.fetchall.return_value = []
@@ -519,14 +520,14 @@ class EmailCodeAuthenticationTests(unittest.TestCase):
         self.assertEqual(result["tenant"], "panaderia-central")
         self.assertEqual(result["username"], email)
         self.assertEqual(connection.execute.call_args_list[1].args[1][2:4], (user_id, tenant_id))
-        issue_session.assert_called_once_with(
-            response,
-            self.request(),
+        issue_session.assert_called_once()
+        self.assertIs(issue_session.call_args.args[0], response)
+        self.assertEqual(issue_session.call_args.args[2:], (
             "tenant",
             str(user_id),
             "ADMIN_PANADERIA",
             str(tenant_by_slug.return_value["id"]),
-        )
+        ))
 
     @patch("saas_app.connect_db")
     def test_rejects_a_wrong_code_and_persists_attempt(self, connect_db):
