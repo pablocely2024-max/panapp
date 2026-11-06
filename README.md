@@ -81,15 +81,15 @@ Super Admin authorizes the bakery email in `panapp_users`. On first access or pa
 SMTP is required for verification and recovery codes. Configure these server-side deployment variables:
 
 ```text
-PANAPP_SMTP_HOST
+PANAPP_SMTP_HOST=smtp.gmail.com
 PANAPP_SMTP_PORT=587
-PANAPP_SMTP_USER
+PANAPP_SMTP_USER=panappanaderias@gmail.com
 PANAPP_SMTP_PASSWORD
-PANAPP_SMTP_FROM
+PANAPP_SMTP_FROM=panappanaderias@gmail.com
 PANAPP_SMTP_USE_SSL=false
 ```
 
-Port 587 uses STARTTLS by default. Set `PANAPP_SMTP_USE_SSL=true` for SMTP-over-SSL providers such as port 465. If SMTP is missing or unavailable, the login page displays an error instead of granting access. The Neon Auth JWT endpoints remain only for compatibility with previously linked sessions; the bakery login page and password-management form use PANAPP's email-code flow.
+The host, port, user, and sender default to the Gmail values above; `PANAPP_SMTP_PASSWORD` must be a Google App Password for `panappanaderias@gmail.com`, not its normal account password. Port 587 uses STARTTLS and SMTP operations time out after eight seconds. PANAPP reports that Gmail accepted the message, not that Gmail guaranteed inbox delivery; check Spam and Render logs if it does not arrive. Set `PANAPP_SMTP_USE_SSL=true` for SMTP-over-SSL providers such as port 465. If SMTP is missing or unavailable, the login page displays an error instead of granting access. The Neon Auth JWT endpoints remain only for compatibility with previously linked sessions; the bakery login page and password-management form use PANAPP's email-code flow.
 
 ## Owner provisioning and access
 
@@ -123,7 +123,7 @@ PANAPP records subscription plans and manually registered payment references; it
 Recording a payment with status `paid` reactivates a non-canceled tenant and extends its current subscription by one billing period. Canceled tenants cannot be reactivated by payment entry.
 Super Admin can review the latest 100 payment records per bakery and download a monthly CSV of paid subscription revenue. The report filters by `paid_at` in the `America/Bogota` time zone.
 
-Super-admin and tenant passwords are hashed with PBKDF2-HMAC-SHA256. PANAPP sessions are stored in PostgreSQL, expire after eight hours, and are revoked when a tenant is suspended or canceled.
+Super-admin and tenant passwords are hashed with PBKDF2-HMAC-SHA256. PANAPP sessions are stored in PostgreSQL, expire after five minutes of inactivity or eight hours total, and are revoked when a tenant is suspended or canceled.
 The [cookie policy](./cookie-policy.html) describes the essential HttpOnly session cookies; PANAPP does not use advertising or analytics cookies.
 
 ## Automatic GitHub sync

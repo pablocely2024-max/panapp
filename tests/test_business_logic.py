@@ -783,9 +783,36 @@ class SubscriptionReportTests(unittest.TestCase):
         self.assertIn("TX-123", response.body.decode("utf-8-sig"))
         self.assertEqual(connection.execute.call_args.args[1], ("2025-02",))
 
+    @patch("saas_app.connect_db")
+    def test_summarizes_paid_revenue_for_dashboard_preview(self, connect_db):
+        from datetime import datetime
+        from decimal import Decimal
+
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchall.return_value = [
+            ("Panadería Central", "central", Decimal("45000.00"), "TX-123", datetime(2025, 2, 4, 10, 30))
+        ]
+        connect_db.return_value = connection
+
+        report = subscription_revenue_summary("2025-02", {})
+
+        self.assertEqual(report["month"], "2025-02")
+        self.assertEqual(report["payment_count"], 1)
+        self.assertEqual(report["total"], 45000.0)
+        self.assertEqual(report["payments"][0]["tenant_name"], "Panadería Central")
+        self.assertEqual(report["payments"][0]["paid_at"], "2025-02-04T10:30:00")
+        self.assertEqual(connection.execute.call_args.args[1], ("2025-02",))
+
     def test_rejects_invalid_report_month(self):
         with self.assertRaises(HTTPException) as error:
             subscription_revenue_report("2025-13", {})
+
+        self.assertEqual(error.exception.status_code, 422)
+
+    def test_dashboard_preview_rejects_invalid_month(self):
+        with self.assertRaises(HTTPException) as error:
+            subscription_revenue_summary("2025-13", {})
 
         self.assertEqual(error.exception.status_code, 422)
 
