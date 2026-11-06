@@ -1915,11 +1915,211 @@ def global_security_status(request: Request):
     return {"authenticated": authenticated, "tenant": tenant_slug}
 
 
+def request_tenant_email_code(body: EmailCodeRequestBody, request: Request, slug: str | None = None) -> dict:
+    require_same_origin(request)
+    email = body.username.strip().lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(status_code=422, detail="Escribe un correo válido.")
+
+    address = request.client.host if request.client else "unknown"
+    if not allow_login_attempt(address):
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Espera 15 minutos.")
+    if slug:
+        tenant_by_slug(slug)
+
+    with connect_db() as connection:
+        tenant_filter = "AND tenant.slug = %s" if slug else ""
+        parameters: tuple = (email, ROLE_ADMIN)
+        if slug:
+            parameters += (validate_slug(slug),)
+        users = connection.execute(
+            f"""
+            SELECT users.user_id, users.panaderia_id, tenant.name
+            FROM panapp_users users
+            JOIN panapp_tenants tenant ON tenant.panaderia_id = users.panaderia_id
+            WHERE users.username = %s AND users.role = %s {tenant_filter}
+            ORDER BY tenant.slug
+            """,
+            parameters,
+        ).fetchall()
+        if len(users) != 1:
+            return {"ok": True, "message": "Si el correo está autorizado, recibirás un código de verificación."}
+
+        user_id, tenant_id, tenant_name = users[0]
+        request_limits = connection.execute(
+            """
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE user_id = %s AND created_at > NOW() - INTERVAL '1 minute'
+                ),
+                COUNT(*) FILTER (
+                    WHERE user_id = %s AND created_at > NOW() - INTERVAL '1 hour'
+                ),
+                COUNT(*) FILTER (
+                    WHERE requester_ip = %s AND created_at > NOW() - INTERVAL '1 hour'
+                )
+            FROM panapp_email_codes
+            """,
+            (user_id, user_id, address),
+        ).fetchone()
+        if request_limits[0] or request_limits[1] >= 5 or request_limits[2] >= 15:
+            raise HTTPException(status_code=429, detail="Espera antes de solicitar otro código.")
+
+        challenge_id = uuid.uuid4()
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        connection.execute(
+            """
+            UPDATE panapp_email_codes SET used_at = NOW()
+            WHERE user_id = %s AND used_at IS NULL
+            """,
+            (user_id,),
+        )
+        connection.execute(
+            """
+            INSERT INTO panapp_email_codes
+                (challenge_id, code_hash, user_id, panaderia_id, email, requester_ip, expires_at)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW() + INTERVAL '10 minutes')
+            """,
+            (challenge_id, password_hash(code, challenge_id.bytes), user_id, tenant_id, email, address),
+        )
+
+    try:
+        sent = send_tenant_email_code(email, tenant_name, code)
+    except (OSError, smtplib.SMTPException, RuntimeError, ValueError) as error:
+        logging.exception("No se pudo enviar el código PANAPP al administrador.")
+        sent = False
+        send_error = error
+    else:
+        send_error = None
+    if not sent:
+        with connect_db() as connection:
+            connection.execute(
+                "UPDATE panapp_email_codes SET used_at = NOW() WHERE challenge_id = %s",
+                (challenge_id,),
+            )
+        if send_error:
+            raise HTTPException(
+                status_code=503,
+                detail="No se pudo enviar el código. Revisa la configuración y disponibilidad del correo SMTP.",
+            ) from send_error
+        raise HTTPException(
+            status_code=503,
+            detail="El correo SMTP no está configurado. Configura PANAPP_SMTP_HOST, PANAPP_SMTP_USER, PANAPP_SMTP_PASSWORD y PANAPP_SMTP_FROM.",
+        )
+    return {"ok": True, "message": "Si el correo está autorizado, recibirás un código de verificación."}
+
+
+@app.post("/api/security/email-code")
+@app.post("/t/{slug}/api/security/email-code")
+def request_global_tenant_email_code(
+    body: EmailCodeRequestBody,
+    request: Request,
+    slug: str | None = None,
+):
+    return request_tenant_email_code(body, request, slug)
+
+
+def verify_tenant_email_code(
+    body: EmailCodeVerifyBody,
+    request: Request,
+    response: Response,
+    slug: str | None = None,
+) -> dict:
+    require_same_origin(request)
+    email = body.username.strip().lower()
+    address = request.client.host if request.client else "unknown"
+    if not allow_login_attempt(address):
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Espera 15 minutos.")
+    if slug:
+        tenant_by_slug(slug)
+
+    tenant_filter = "AND tenant.slug = %s" if slug else ""
+    parameters: tuple = (email, ROLE_ADMIN)
+    if slug:
+        parameters += (validate_slug(slug),)
+
+    invalid_code = False
+    user = None
+    with connect_db() as connection:
+        challenge = connection.execute(
+            f"""
+            SELECT challenge.challenge_id, challenge.code_hash, challenge.attempts,
+                   users.user_id, users.panaderia_id, users.username, users.role, tenant.slug
+            FROM panapp_email_codes challenge
+            JOIN panapp_users users ON users.user_id = challenge.user_id
+            JOIN panapp_tenants tenant ON tenant.panaderia_id = challenge.panaderia_id
+            WHERE challenge.email = %s AND users.role = %s
+              AND challenge.used_at IS NULL AND challenge.expires_at > NOW()
+              AND challenge.attempts < 5
+              {tenant_filter}
+            ORDER BY challenge.created_at DESC
+            LIMIT 1
+            FOR UPDATE OF challenge
+            """,
+            parameters,
+        ).fetchone()
+        if not challenge:
+            invalid_code = True
+        elif not hmac.compare_digest(
+            password_hash(body.code, challenge[0].bytes),
+            challenge[1],
+        ):
+            connection.execute(
+                """
+                UPDATE panapp_email_codes
+                SET attempts = attempts + 1,
+                    used_at = CASE WHEN attempts >= 4 THEN NOW() ELSE used_at END
+                WHERE challenge_id = %s
+                """,
+                (challenge[0],),
+            )
+            invalid_code = True
+        else:
+            salt = secrets.token_bytes(32)
+            connection.execute(
+                """
+                UPDATE panapp_users SET salt = %s, password_hash = %s
+                WHERE user_id = %s AND panaderia_id = %s
+                """,
+                (
+                    salt.hex(),
+                    password_hash(body.password, salt),
+                    challenge[3],
+                    challenge[4],
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE panapp_email_codes SET used_at = NOW()
+                WHERE user_id = %s AND used_at IS NULL
+                """,
+                (challenge[3],),
+            )
+            user = challenge[3:]
+
+    if invalid_code:
+        record_login_failure(address)
+        raise HTTPException(status_code=400, detail="El código no es válido o venció. Solicita uno nuevo.")
+    clear_login_failures(address)
+    tenant = tenant_by_slug(user[4])
+    issue_session(response, request, "tenant", str(user[0]), user[3], tenant["id"])
+    return {"ok": True, "username": user[2], "role": user[3], "tenant": user[4]}
+
+
+@app.post("/api/security/email-code/verify")
+@app.post("/t/{slug}/api/security/email-code/verify")
+def verify_global_tenant_email_code(
+    body: EmailCodeVerifyBody,
+    request: Request,
+    response: Response,
+    slug: str | None = None,
+):
+    return verify_tenant_email_code(body, request, response, slug)
+
+
 @app.post("/api/security/login")
 def global_tenant_login(body: LoginBody, request: Request, response: Response):
     require_same_origin(request)
-    if NEON_AUTH_URL:
-        raise HTTPException(status_code=410, detail="El acceso de panadería ahora se gestiona con Neon Auth.")
     address = request.client.host if request.client else "unknown"
     if not allow_login_attempt(address):
         raise HTTPException(status_code=429, detail="Demasiados intentos. Espera 15 minutos.")
