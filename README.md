@@ -104,24 +104,24 @@ Use an email and a password of at least 12 characters. On first startup, PANAPP 
 
 Sign in at `/superadmin` to create a bakery tenant, provision its administrator, choose a monthly or annual plan, suspend/reactivate/cancel service, and record or review payments. Tenant accounts are scoped to their bakery. The global owner session and bakery session use separate `HttpOnly` cookies.
 
-For each bakery account, Super Admin authorizes the administrator's email. When SMTP is configured, PANAPP sends an invitation link. The invited administrator verifies that same authorized email with a one-time code and chooses their own password. If invitation-email delivery is unavailable, Super Admin can share the single-use invitation link. Password recovery uses the same email-code flow; PANAPP never sends an initial or reset password by email.
+For each bakery account, Super Admin authorizes the administrator's email. When SMTP is configured, PANAPP sends an invitation link. The invited administrator verifies that same authorized email with a one-time code and chooses their own password. In **Configurar admin**, Super Admin can also send a recovery code to the already-authorized address. The administrator uses it to set a new password; PANAPP never sends passwords by email. If invitation-email delivery is unavailable, Super Admin can share the single-use invitation link.
 
 Configure these server-side environment variables to send invitation emails and login-verification codes:
 
 ```text
-PANAPP_SMTP_HOST
+PANAPP_SMTP_HOST=smtp.gmail.com
 PANAPP_SMTP_PORT=587
-PANAPP_SMTP_USER
+PANAPP_SMTP_USER=panappanaderias@gmail.com
 PANAPP_SMTP_PASSWORD
-PANAPP_SMTP_FROM
+PANAPP_SMTP_FROM=panappanaderias@gmail.com
 PANAPP_SMTP_USE_SSL=false
 ```
 
-Port 587 uses STARTTLS by default. Set `PANAPP_SMTP_USE_SSL=true` for an SMTP-over-SSL provider such as port 465. If delivery fails, the administrator remains authorized and Super Admin can copy the single-use invitation link from the displayed result. Login and recovery codes require functioning SMTP delivery.
+The host, user, and sender default to the Gmail values above; `PANAPP_SMTP_PASSWORD` must be a Google App Password. Port 587 uses STARTTLS and SMTP operations time out after eight seconds. If Gmail accepts a message but it does not arrive, check Spam and the Render logs. Set `PANAPP_SMTP_USE_SSL=true` for an SMTP-over-SSL provider such as port 465. If invitation delivery fails, the administrator remains authorized and Super Admin can copy the single-use invitation link from the displayed result.
 
 PANAPP records subscription plans and manually registered payment references; it does not connect to a payment processor or issue electronic tax invoices. MRR is an estimate based on active subscriptions, with annual plans prorated over 12 months. A tenant whose subscription period expires is suspended on its next tenant request.
 Recording a payment with status `paid` reactivates a non-canceled tenant and extends its current subscription by one billing period. Canceled tenants cannot be reactivated by payment entry.
-Super Admin can review the latest 100 payment records per bakery and download a monthly CSV of paid subscription revenue. The report filters by `paid_at` in the `America/Bogota` time zone.
+Super Admin can review the latest 100 payment records per bakery, preview paid subscription revenue by month, and download a CSV. The report filters by `paid_at` in the `America/Bogota` time zone.
 
 Super-admin and tenant passwords are hashed with PBKDF2-HMAC-SHA256. PANAPP sessions are stored in PostgreSQL, expire after five minutes of inactivity or eight hours total, and are revoked when a tenant is suspended or canceled.
 The [cookie policy](./cookie-policy.html) describes the essential HttpOnly session cookies; PANAPP does not use advertising or analytics cookies.
