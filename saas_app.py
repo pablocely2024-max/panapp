@@ -1622,6 +1622,48 @@ def subscription_revenue_report(
     )
 
 
+@app.get("/api/superadmin/reports/subscription-revenue")
+def subscription_revenue_summary(
+    month: str,
+    _: Annotated[dict, Depends(require_superadmin)],
+):
+    try:
+        report_month = datetime.strptime(month, "%Y-%m")
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="El mes debe tener el formato AAAA-MM.") from error
+    if report_month.strftime("%Y-%m") != month:
+        raise HTTPException(status_code=422, detail="El mes debe tener el formato AAAA-MM.")
+    with connect_db() as connection:
+        rows = connection.execute(
+            """
+            SELECT tenant.name, tenant.slug, payment.amount, payment.reference,
+                   payment.paid_at AT TIME ZONE 'America/Bogota'
+            FROM panapp_payments payment
+            JOIN panapp_tenants tenant ON tenant.panaderia_id = payment.panaderia_id
+            WHERE payment.status = 'paid'
+              AND to_char(payment.paid_at AT TIME ZONE 'America/Bogota', 'YYYY-MM') = %s
+            ORDER BY payment.paid_at, tenant.name
+            """,
+            (month,),
+        ).fetchall()
+    payments = [
+        {
+            "tenant_name": row[0],
+            "tenant_slug": row[1],
+            "amount": float(row[2]),
+            "reference": row[3],
+            "paid_at": row[4].isoformat(),
+        }
+        for row in rows
+    ]
+    return {
+        "month": month,
+        "payment_count": len(payments),
+        "total": sum(payment["amount"] for payment in payments),
+        "payments": payments,
+    }
+
+
 @app.put("/api/superadmin/tenants/{slug}/subscription")
 def update_subscription(slug: str, body: SubscriptionUpdateBody, request: Request, _: Annotated[dict, Depends(require_superadmin)]):
     require_same_origin(request)
