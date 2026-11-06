@@ -1,6 +1,7 @@
 import unittest
 from datetime import datetime, timedelta, timezone
 import os
+import smtplib
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -250,6 +251,128 @@ class SmtpEmailTests(unittest.TestCase):
 
         with self.assertRaises(smtplib.SMTPRecipientsRefused):
             send_smtp_email("admin@example.test", "Código", "Contenido")
+
+
+class IdleSessionTests(unittest.TestCase):
+    def request(self, method="GET", path="/t/panaderia-central/api/state"):
+        return Request({
+            "type": "http",
+            "method": method,
+            "path": path,
+            "headers": [
+                (b"host", b"testserver"),
+                (b"cookie", f"{TENANT_SESSION_COOKIE}=session-token".encode()),
+            ],
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("127.0.0.1", 1234),
+            "query_string": b"",
+        })
+
+    @patch("saas_app.connect_db")
+    def test_background_state_poll_does_not_extend_idle_timeout(self, connect_db):
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.side_effect = [
+            MagicMock(fetchone=MagicMock(return_value=("tenant", uuid4(), uuid4(), "ADMIN_PANADERIA"))),
+            MagicMock(fetchone=MagicMock(return_value=("admin@example.test",))),
+        ]
+        connect_db.return_value = connection
+
+        identity = current_session(self.request())
+
+        self.assertEqual(identity["username"], "admin@example.test")
+        query, parameters = connection.execute.call_args_list[0].args
+        self.assertIn("last_activity_at > NOW()", query)
+        self.assertEqual(parameters[0], False)
+        self.assertEqual(parameters[2], SESSION_IDLE_TIMEOUT_MINUTES)
+
+    @patch("saas_app.connect_db")
+    def test_authenticated_user_action_refreshes_idle_timeout(self, connect_db):
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.side_effect = [
+            MagicMock(fetchone=MagicMock(return_value=("tenant", uuid4(), uuid4(), "ADMIN_PANADERIA"))),
+            MagicMock(fetchone=MagicMock(return_value=("admin@example.test",))),
+        ]
+        connect_db.return_value = connection
+
+        self.assertIsNotNone(current_session(self.request("POST", "/t/panaderia-central/api/security/activity")))
+
+        self.assertTrue(connection.execute.call_args_list[0].args[1][0])
+
+
+class AdminRecoveryCodeTests(unittest.TestCase):
+    @patch("saas_app.request_tenant_email_code", return_value={"ok": True, "message": "accepted"})
+    @patch("saas_app.tenant_by_slug", return_value={"id": str(uuid4()), "slug": "panaderia-central"})
+    @patch("saas_app.connect_db")
+    def test_superadmin_can_send_code_only_to_authorized_tenant_email(
+        self,
+        connect_db,
+        tenant_by_slug,
+        request_code,
+    ):
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchone.return_value = (1,)
+        connect_db.return_value = connection
+        request = Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/api/superadmin/tenants/panaderia-central/admin/recovery-code",
+            "headers": [(b"host", b"testserver"), (b"origin", b"http://testserver")],
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("127.0.0.1", 1234),
+            "query_string": b"",
+        })
+
+        result = send_tenant_admin_recovery_code(
+            "panaderia-central",
+            EmailCodeRequestBody(username="Admin@example.test"),
+            request,
+            {},
+        )
+
+        self.assertEqual(result["message"], "accepted")
+        request_code.assert_called_once_with(
+            EmailCodeRequestBody(username="admin@example.test"),
+            request,
+            "panaderia-central",
+        )
+        self.assertEqual(connection.execute.call_args.args[1][1], "admin@example.test")
+
+    @patch("saas_app.connect_db")
+    def test_superadmin_cannot_send_recovery_code_to_unapproved_email(self, connect_db):
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchone.return_value = None
+        connect_db.return_value = connection
+        request = Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/api/superadmin/tenants/panaderia-central/admin/recovery-code",
+            "headers": [(b"host", b"testserver"), (b"origin", b"http://testserver")],
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("127.0.0.1", 1234),
+            "query_string": b"",
+        })
+
+        with (
+            patch("saas_app.tenant_by_slug", return_value={"id": str(uuid4()), "slug": "panaderia-central"}),
+            patch("saas_app.request_tenant_email_code") as request_code,
+        ):
+            with self.assertRaises(HTTPException) as error:
+                send_tenant_admin_recovery_code(
+                    "panaderia-central",
+                    EmailCodeRequestBody(username="unknown@example.test"),
+                    request,
+                    {},
+                )
+
+        self.assertEqual(error.exception.status_code, 404)
+        request_code.assert_not_called()
 
 
 class NeonTokenVerificationTests(unittest.TestCase):
