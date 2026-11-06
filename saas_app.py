@@ -909,7 +909,7 @@ def write_tenant_state(tenant_id: str, payload: dict) -> dict:
     return {"revision": row[0], "updated_at": row[1].isoformat()}
 
 
-def public_catalog(tenant_id: str) -> dict:
+def public_catalog(tenant_id: str, tenant_name: str = "") -> dict:
     state = read_tenant_state(tenant_id)
     data = state["data"] if isinstance(state["data"], dict) else {}
     profile = data.get("perfilEmpresa") if isinstance(data.get("perfilEmpresa"), dict) else {}
@@ -922,7 +922,7 @@ def public_catalog(tenant_id: str) -> dict:
     return {
         "revision": state["revision"],
         "business": {
-            key: public_text(profile.get(key, ""))
+            key: public_text(profile.get(key, "")) or (tenant_name if key == "nombre" else "")
             for key in ("nombre", "tipo", "eslogan", "descripcion", "direccion", "ciudad", "horario", "telefono", "email", "moneda")
         },
         "whatsapp": public_text(configuration.get("whatsapp", "")),
@@ -1592,7 +1592,7 @@ def public_menu_page(menu_token: str):
 @app.get("/m/{menu_token}/api/menu")
 def public_token_menu(menu_token: str):
     tenant = tenant_by_menu_token(menu_token)
-    return public_catalog(tenant["id"])
+    return public_catalog(tenant["id"], tenant["name"])
 
 
 @app.get("/t/{slug}/menu/qr.svg")
@@ -2086,7 +2086,7 @@ def save_tenant_state(slug: str, request: Request, payload: dict):
 @app.get("/t/{slug}/api/menu")
 def tenant_menu(slug: str):
     tenant = tenant_by_slug(slug)
-    return public_catalog(tenant["id"])
+    return public_catalog(tenant["id"], tenant["name"])
 
 
 @app.get("/t/{slug}/auth.html")

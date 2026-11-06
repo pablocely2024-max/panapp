@@ -197,6 +197,13 @@ class PublicCatalogTests(unittest.TestCase):
         )
         self.assertNotIn("proveedores", catalog)
 
+    @patch("saas_app.read_tenant_state", return_value={"revision": 0, "data": None})
+    def test_uses_tenant_name_when_business_profile_is_not_configured(self, read_state):
+        catalog = public_catalog("tenant-id", "Panadería La Central")
+
+        self.assertEqual(catalog["business"]["nombre"], "Panadería La Central")
+        self.assertEqual(catalog["products"], [])
+
 
 class NeonTokenVerificationTests(unittest.TestCase):
     def create_token(self, private_key):

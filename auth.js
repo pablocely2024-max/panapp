@@ -71,7 +71,7 @@ function updateAuthMode() {
     };
     const buttons = {
         'sign-in': 'Entrar al panel',
-        'sign-up': 'Crear cuenta Neon Auth',
+        'sign-up': 'Crear cuenta y recibir código',
         'verify-email': 'Verificar código',
         'forgot-password': 'Enviar enlace de recuperación',
         'reset-password': 'Guardar contraseña nueva'
@@ -80,7 +80,7 @@ function updateAuthMode() {
     submitButton.textContent = buttons[mode];
     authModeToggle.textContent = mode === 'sign-up'
         ? 'Ya tengo una cuenta Neon Auth'
-        : '¿Tu correo ya fue habilitado? Crea tu contraseña de Neon Auth';
+        : '¿Ya autorizaron tu correo? Crear cuenta y recibir código';
     updateSubmitState();
 }
 
@@ -115,7 +115,7 @@ async function exchangeProviderSession() {
 function readableAuthError(error) {
     const message = error?.message || 'No se pudo validar el acceso.';
     if (/invalid origin/i.test(message)) {
-        return `Neon Auth rechazó el origen. Agrega https://${window.location.host} en sus orígenes permitidos y vuelve a intentar.`;
+        return `Neon Auth rechazó el origen. En la configuración de Neon Auth, agrega exactamente https://${window.location.host} a Allowed origins. Luego abre de nuevo esta página e intenta registrarte o iniciar sesión.`;
     }
     return message;
 }
@@ -159,7 +159,7 @@ async function checkSession() {
                 ? 'Ingresa el correo habilitado por el propietario de tu panadería.'
                 : invitationToken
                     ? 'Tu invitación está activa. Crea una cuenta nueva o inicia sesión si ya tienes una.'
-                    : `Accede al panel de ${status.tenant?.name || 'tu panadería'}.`
+                    : `Accede al panel de ${status.tenant?.name || 'tu panadería'}. Si es tu primer ingreso, crea tu cuenta para recibir un código de verificación en el correo autorizado.`
             : 'Esta panadería no tiene un administrador habilitado. Un propietario debe configurarlo en Super Admin.';
         adminSetupLink.classList.toggle('hidden', globalLogin || status.configured);
         setMode(invitationToken && !globalLogin ? 'sign-up' : 'sign-in');
@@ -198,7 +198,7 @@ form.addEventListener('submit', async event => {
             } else {
                 emailInput.value = email;
                 setMode('verify-email');
-                instructions.textContent = 'Ingresa el código que Neon Auth envió a tu correo.';
+                instructions.textContent = 'Te enviamos un código de verificación al correo autorizado. Ingresa el código para activar tu acceso.';
             }
         } else if (mode === 'sign-in') {
             const result = await neonAuth.signIn.email({ email, password: passwordInput.value });

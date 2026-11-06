@@ -108,6 +108,7 @@ function renderMenu(currency = 'COP') {
 function updateBusiness(business) {
     document.getElementById('menuBusinessName').textContent = business.nombre || 'Panadería PANAPP';
     document.getElementById('menuFooterBusiness').textContent = business.nombre || 'PANAPP';
+    document.title = `${business.nombre || 'Panadería PANAPP'} · Menú`;
     document.getElementById('menuBusinessTagline').textContent = business.eslogan || 'Recién hecho para ti';
     document.getElementById('menuBusinessType').textContent = business.tipo || 'Panadería artesanal';
     document.getElementById('menuBusinessDescription').textContent = business.descripcion || 'Productos frescos, preparados cada día.';
