@@ -469,15 +469,15 @@ async function cambiarClaveAdministrador(evento) {
         return;
     }
     try {
-        const { neonAuth } = await import(tenantPath('/neon-auth.js'));
-        const result = await neonAuth.changePassword({
-            currentPassword: actual,
-            newPassword: nueva,
-            revokeOtherSessions: true
+        const response = await fetch(tenantPath('/api/security/password'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_password: actual, new_password: nueva })
         });
-        if (result.error) throw new Error(result.error.message || 'No se pudo cambiar la contraseña en Neon Auth.');
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || 'No se pudo cambiar la contraseña.');
         document.getElementById('formCambiarClave').reset();
-        estado.textContent = 'Contraseña actualizada en Neon Auth. Vuelve a iniciar sesión si se cerraron otras sesiones.';
+        estado.textContent = 'Contraseña actualizada.';
     } catch (requestError) {
         estado.textContent = requestError.message;
     }
@@ -485,9 +485,6 @@ async function cambiarClaveAdministrador(evento) {
 
 async function cerrarSesion() {
     try {
-        const { neonAuth } = await import(tenantPath('/neon-auth.js'));
-        const providerResult = await neonAuth.signOut();
-        if (providerResult.error) throw new Error(providerResult.error.message || 'No se pudo cerrar la sesión de Neon Auth.');
         if (servidorLocalActivo()) {
             const response = await fetch(tenantPath('/api/security/logout'), {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
