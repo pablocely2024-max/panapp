@@ -187,6 +187,48 @@ async function downloadMonthlyReport() {
     }
 }
 
+async function loadMonthlyReport() {
+    const month = document.getElementById('reportMonth').value;
+    const message = document.getElementById('reportMessage');
+    const table = document.getElementById('reportPaymentTable');
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+        showMessage(message, 'Selecciona un mes válido para consultar el informe.', true);
+        return;
+    }
+
+    table.replaceChildren(tableCell('Cargando pagos…'), tableCell(''), tableCell(''), tableCell(''));
+    try {
+        const report = await api(`/api/superadmin/reports/subscription-revenue?month=${encodeURIComponent(month)}`);
+        document.getElementById('reportTotal').textContent = money(report.total);
+        document.getElementById('reportPaymentCount').textContent = report.payment_count;
+        document.getElementById('reportTenantCount').textContent = new Set(
+            report.payments.map(payment => payment.tenant_slug)
+        ).size;
+        if (!report.payments.length) {
+            table.replaceChildren(tableCell(`No hay pagos confirmados en ${month}.`), tableCell(''), tableCell(''), tableCell(''));
+            showMessage(message, `Sin ingresos registrados para ${month}.`);
+            return;
+        }
+        table.replaceChildren(...report.payments.map(payment => {
+            const row = document.createElement('tr');
+            row.append(
+                tableCell(new Date(`${payment.paid_at}Z`).toLocaleString('es-CO', { timeZone: 'America/Bogota' })),
+                tableCell(payment.tenant_name),
+                tableCell(money(payment.amount)),
+                tableCell(payment.reference || '—')
+            );
+            return row;
+        }));
+        showMessage(message, `Resumen de ${month}: pagos confirmados en hora de Colombia.`);
+    } catch (error) {
+        document.getElementById('reportTotal').textContent = '—';
+        document.getElementById('reportPaymentCount').textContent = '—';
+        document.getElementById('reportTenantCount').textContent = '—';
+        table.replaceChildren(tableCell('No se pudo cargar el informe.'), tableCell(''), tableCell(''), tableCell(''));
+        showMessage(message, error.message || 'No se pudo consultar el informe.', true);
+    }
+}
+
 function configureTenantAdmin(tenant) {
     const form = document.getElementById('tenantAdminForm');
     form.dataset.slug = tenant.slug;
@@ -326,6 +368,7 @@ async function showDashboard() {
     try {
         await loadPlans();
         await refreshDashboard();
+        await loadMonthlyReport();
     } catch (error) {
         showGlobalError(error);
     }
@@ -415,6 +458,30 @@ document.getElementById('tenantAdminForm').addEventListener('submit', async even
     }
 });
 
+document.getElementById('sendRecoveryCodeButton').addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const email = document.getElementById('tenantAdminEmail').value.trim();
+    const message = document.getElementById('tenantAdminMessage');
+    if (!email || !document.getElementById('tenantAdminEmail').checkValidity()) {
+        showMessage(message, 'Escribe el correo autorizado de esta panadería.', true);
+        return;
+    }
+    button.disabled = true;
+    try {
+        const result = await api(`/api/superadmin/tenants/${encodeURIComponent(
+            document.getElementById('tenantAdminForm').dataset.slug
+        )}/admin/recovery-code`, {
+            method: 'POST',
+            body: JSON.stringify({ username: email })
+        });
+        showMessage(message, result.message || 'El servidor de correo aceptó el código. Revisa Recibidos y Spam.');
+    } catch (error) {
+        showMessage(message, error.message || 'No se pudo enviar el código de recuperación.', true);
+    } finally {
+        button.disabled = false;
+    }
+});
+
 document.getElementById('refreshButton').addEventListener('click', refreshDashboard);
 document.getElementById('downloadReportButton').addEventListener('click', downloadMonthlyReport);
 const reportDateParts = new Intl.DateTimeFormat('en', {
@@ -423,6 +490,7 @@ const reportDateParts = new Intl.DateTimeFormat('en', {
     month: '2-digit'
 }).formatToParts(new Date());
 document.getElementById('reportMonth').value = `${reportDateParts.find(part => part.type === 'year').value}-${reportDateParts.find(part => part.type === 'month').value}`;
+document.getElementById('reportMonth').addEventListener('change', loadMonthlyReport);
 document.getElementById('logoutButton').addEventListener('click', async () => {
     try {
         await api('/api/superadmin/logout', { method: 'POST', body: '{}' });
