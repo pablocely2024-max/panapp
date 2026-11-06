@@ -196,7 +196,14 @@ async function loadMonthlyReport() {
         return;
     }
 
-    table.replaceChildren(tableCell('Cargando pagos…'), tableCell(''), tableCell(''), tableCell(''));
+    const showTableMessage = text => {
+        const row = document.createElement('tr');
+        const cell = tableCell(text);
+        cell.colSpan = 4;
+        row.append(cell);
+        table.replaceChildren(row);
+    };
+    showTableMessage('Cargando pagos…');
     try {
         const report = await api(`/api/superadmin/reports/subscription-revenue?month=${encodeURIComponent(month)}`);
         document.getElementById('reportTotal').textContent = money(report.total);
@@ -205,14 +212,14 @@ async function loadMonthlyReport() {
             report.payments.map(payment => payment.tenant_slug)
         ).size;
         if (!report.payments.length) {
-            table.replaceChildren(tableCell(`No hay pagos confirmados en ${month}.`), tableCell(''), tableCell(''), tableCell(''));
+            showTableMessage(`No hay pagos confirmados en ${month}.`);
             showMessage(message, `Sin ingresos registrados para ${month}.`);
             return;
         }
         table.replaceChildren(...report.payments.map(payment => {
             const row = document.createElement('tr');
             row.append(
-                tableCell(new Date(`${payment.paid_at}Z`).toLocaleString('es-CO', { timeZone: 'America/Bogota' })),
+                tableCell(payment.paid_at.replace('T', ' ').slice(0, 16)),
                 tableCell(payment.tenant_name),
                 tableCell(money(payment.amount)),
                 tableCell(payment.reference || '—')
@@ -224,7 +231,7 @@ async function loadMonthlyReport() {
         document.getElementById('reportTotal').textContent = '—';
         document.getElementById('reportPaymentCount').textContent = '—';
         document.getElementById('reportTenantCount').textContent = '—';
-        table.replaceChildren(tableCell('No se pudo cargar el informe.'), tableCell(''), tableCell(''), tableCell(''));
+        showTableMessage('No se pudo cargar el informe.');
         showMessage(message, error.message || 'No se pudo consultar el informe.', true);
     }
 }
