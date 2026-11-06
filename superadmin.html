@@ -1,0 +1,148 @@
+<!-- Capa 1: consola privada de propietarios PANAPP; separada de cada tenant. -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>Super Admin · PANAPP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="min-h-screen bg-[#fffaf2] font-sans text-slate-800">
+    <main class="mx-auto max-w-7xl px-5 py-10 sm:px-8">
+        <header class="mb-10 flex flex-wrap items-center justify-between gap-5">
+            <a href="/superadmin" class="flex items-center gap-3 text-slate-900">
+                <span class="grid h-12 w-12 place-items-center rounded-2xl bg-slate-900 text-lg font-black text-amber-300">P</span>
+                <span><strong class="block text-xl font-extrabold">PANAPP</strong><small class="text-xs font-bold uppercase tracking-[.18em] text-amber-700">Control de plataforma</small></span>
+            </a>
+            <button id="logoutButton" class="hidden rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">Cerrar sesión</button>
+        </header>
+
+        <section id="loginPanel" class="mx-auto max-w-md rounded-3xl border border-amber-100 bg-white p-7 shadow-xl sm:p-10">
+            <p class="text-xs font-bold uppercase tracking-[.18em] text-amber-700">Solo propietarios PANAPP</p>
+            <h1 class="mt-3 font-display text-4xl text-slate-900">Super Admin</h1>
+            <p class="mt-3 leading-6 text-slate-600">Administra tenants, suscripciones y pagos de la plataforma.</p>
+            <form id="loginForm" class="mt-7 space-y-4">
+                <label class="block text-sm font-semibold">Correo del propietario
+                    <input id="loginEmail" type="email" required autocomplete="username" maxlength="254" class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                </label>
+                <label class="block text-sm font-semibold">Contraseña
+                    <input id="loginPassword" type="password" required autocomplete="current-password" maxlength="256" class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                </label>
+                <p id="loginError" class="hidden rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"></p>
+                <button class="w-full rounded-xl bg-slate-900 px-5 py-4 font-bold text-white hover:bg-slate-800">Entrar al portal</button>
+            </form>
+            <a href="/login" class="mt-4 block rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-bold text-amber-900 transition hover:bg-amber-100">Ingresar como administrador de panadería</a>
+            <p class="mt-6 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500">La cuenta propietaria se provisiona mediante variables secretas del servidor. No existe registro público.</p>
+        </section>
+
+        <section id="dashboardPanel" class="hidden space-y-8">
+            <div class="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-[.18em] text-amber-700">Operación SaaS</p>
+                    <h1 class="mt-2 font-display text-4xl text-slate-900">Panaderías y suscripciones</h1>
+                </div>
+                <p id="databaseStatus" class="rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800" role="status">Comprobando PostgreSQL…</p>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+                <article class="rounded-2xl border border-amber-100 bg-white p-6 shadow-sm">
+                    <p class="text-sm font-semibold text-slate-500">Panaderías activas</p>
+                    <strong id="activeTenants" class="mt-2 block text-4xl font-black text-slate-900">—</strong>
+                </article>
+                <article class="rounded-2xl border border-amber-100 bg-white p-6 shadow-sm">
+                    <p class="text-sm font-semibold text-slate-500">MRR estimado</p>
+                    <strong id="mrrValue" class="mt-2 block text-4xl font-black text-slate-900">—</strong>
+                    <small class="mt-2 block text-slate-500">Suscripciones activas; plan anual prorrateado en 12 meses.</small>
+                </article>
+            </div>
+
+            <section class="rounded-2xl border border-amber-100 bg-white p-6 shadow-sm sm:p-8">
+                <h2 class="font-display text-2xl text-slate-900">Crear panadería cliente</h2>
+                <p class="mt-2 text-sm leading-6 text-slate-600">Provisiona el tenant, autoriza el correo de su administrador y crea un espacio de datos aislado.</p>
+                <form id="tenantForm" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <label class="text-sm font-semibold">Nombre del negocio
+                        <input name="name" required minlength="2" maxlength="160" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3">
+                    </label>
+                    <label class="text-sm font-semibold">Slug único
+                        <input name="slug" required minlength="3" maxlength="63" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="mi-panaderia" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3">
+                    </label>
+                    <label class="text-sm font-semibold">Correo administrador
+                        <input name="owner_email" type="email" required maxlength="254" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3">
+                    </label>
+                    <label class="text-sm font-semibold">Plan
+                        <select id="planSelect" name="plan" required class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3"></select>
+                    </label>
+                    <label class="text-sm font-semibold">Facturación
+                        <select name="billing_period" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3">
+                            <option value="monthly">Mensual</option>
+                            <option value="annual">Anual</option>
+                        </select>
+                    </label>
+                    <div class="sm:col-span-2 lg:col-span-3">
+                        <p id="tenantFormMessage" class="hidden mb-3 rounded-xl px-4 py-3 text-sm" role="status"></p>
+                        <button class="rounded-xl bg-amber-700 px-5 py-3 font-bold text-white hover:bg-amber-800">Crear tenant y autorizar administrador</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="rounded-2xl border border-amber-100 bg-white p-6 shadow-sm sm:p-8">
+                <div class="flex flex-wrap items-end justify-between gap-3">
+                    <div><h2 class="font-display text-2xl text-slate-900">Tenants</h2><p class="mt-1 text-sm text-slate-500">Acceso por `/t/{slug}` o por subdominio configurado.</p></div>
+                    <button id="refreshButton" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold hover:bg-slate-50">Actualizar</button>
+                </div>
+                <p id="tenantListError" class="hidden mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"></p>
+                <div class="mt-5 overflow-x-auto">
+                    <table class="w-full min-w-[850px] text-left text-sm">
+                        <thead class="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                            <tr><th class="px-3 py-3">Panadería</th><th class="px-3 py-3">Estado</th><th class="px-3 py-3">Plan</th><th class="px-3 py-3">Facturación</th><th class="px-3 py-3">Acciones</th></tr>
+                        </thead>
+                        <tbody id="tenantTable" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </section>
+            <p id="globalError" class="hidden rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"></p>
+        </section>
+    </main>
+    <dialog id="paymentsDialog" class="w-[calc(100%-2rem)] max-w-2xl rounded-3xl border border-amber-100 bg-white p-0 text-slate-800 shadow-2xl backdrop:bg-slate-950/60">
+        <section class="p-6 sm:p-8">
+            <div class="flex items-start justify-between gap-4">
+                <div><p class="text-xs font-bold uppercase tracking-[.18em] text-amber-700">Facturación SaaS</p><h2 id="paymentsTitle" class="mt-2 font-display text-2xl text-slate-900">Pagos</h2></div>
+                <button id="closePaymentsDialog" class="rounded-full px-3 py-2 text-slate-500 hover:bg-slate-100" aria-label="Cerrar historial">✕</button>
+            </div>
+            <p id="paymentsError" class="hidden mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"></p>
+            <div class="mt-5 max-h-[60vh] overflow-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="border-b border-slate-200 text-xs uppercase text-slate-500"><tr><th class="py-3 pr-3">Fecha</th><th class="py-3 pr-3">Importe</th><th class="py-3 pr-3">Estado</th><th class="py-3">Referencia</th></tr></thead>
+                    <tbody id="paymentTable" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </section>
+    </dialog>
+    <dialog id="tenantAdminDialog" class="w-[calc(100%-2rem)] max-w-lg rounded-3xl border border-amber-100 bg-white p-0 text-slate-800 shadow-2xl backdrop:bg-slate-950/60">
+        <section class="p-6 sm:p-8">
+            <div class="flex items-start justify-between gap-4">
+                <div><p class="text-xs font-bold uppercase tracking-[.18em] text-amber-700">Acceso de panadería</p><h2 id="tenantAdminTitle" class="mt-2 font-display text-2xl text-slate-900">Administrador</h2></div>
+                <button id="closeTenantAdminDialog" type="button" class="rounded-full px-3 py-2 text-slate-500 hover:bg-slate-100" aria-label="Cerrar configuración">✕</button>
+            </div>
+            <p class="mt-3 text-sm leading-6 text-slate-600">Autoriza un correo para esta panadería. Su propietario creará la contraseña con Neon Auth; el acceso se habilita al verificar ese correo.</p>
+            <p id="tenantAdminMessage" class="hidden mt-4 rounded-xl px-4 py-3 text-sm" role="status"></p>
+            <form id="tenantAdminForm" class="mt-5 space-y-4">
+                <label class="block text-sm font-semibold">Correo del administrador
+                    <input id="tenantAdminEmail" type="email" required minlength="3" maxlength="254" autocomplete="username" class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                </label>
+                <p class="text-xs leading-5 text-slate-500">Solo una cuenta Neon Auth con correo verificado podrá usar este acceso. No se modifican cuentas de otras panaderías.</p>
+                <div class="flex flex-wrap justify-end gap-3">
+                    <button id="cancelTenantAdminDialog" type="button" class="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancelar</button>
+                    <button class="rounded-xl bg-amber-700 px-5 py-3 text-sm font-bold text-white hover:bg-amber-800">Guardar administrador</button>
+                </div>
+            </form>
+        </section>
+    </dialog>
+    <script src="/superadmin.js?v=2" defer></script>
+</body>
+</html>

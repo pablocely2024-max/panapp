@@ -1,0 +1,456 @@
+<!-- PANAPP administration dashboard; served only to authenticated administrators. -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administración PANAPP</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 50: '#fffbeb', 100: '#fef3c7', 500: '#f59e0b', 600: '#d97706', 900: '#78350f' }
+                    },
+                    animation: { 'fade-in': 'fadeIn 0.4s ease-out forwards' },
+                    keyframes: { fadeIn: { '0%': { opacity: '0', transform: 'translateY(10px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } } }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Fuentes, Íconos y Librerías -->
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/motion@12.23.12/dist/motion.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-gray-50 text-gray-800 antialiased min-h-screen selection:bg-brand-500 selection:text-white">
+
+    <!-- ========================================== -->
+    <!-- MÓDULO 2: PANEL ADMINISTRATIVO            -->
+    <!-- ========================================== -->
+    <div id="appPrincipal" class="h-screen flex overflow-hidden bg-gray-50">
+
+        <!-- SIDEBAR -->
+        <aside class="bg-slate-900 text-white w-72 flex-shrink-0 flex flex-col justify-between shadow-2xl z-20">
+            <div>
+                <div class="p-6 flex items-center gap-3">
+                    <div class="bg-brand-500 text-white w-10 h-10 rounded-xl flex items-center justify-center font-black text-xl shadow-lg">P</div>
+                    <div>
+                        <h2 id="nombreEmpresaSidebar" class="font-black text-xl tracking-tight leading-none">PANAPP</h2>
+                        <span id="tipoEmpresaSidebar" class="text-[10px] font-bold text-brand-400 uppercase tracking-widest">SaaS Edition</span>
+                    </div>
+                </div>
+
+                <nav class="p-4 space-y-1.5" id="navMenu">
+                    <button onclick="mostrarModulo('secDashboard', this)" class="w-full text-left px-4 py-3 rounded-xl text-sm font-bold bg-brand-600 text-white shadow-md flex items-center gap-3 transition-all menu-btn">
+                        <i class="fa-solid fa-chart-pie w-5 text-center"></i> Dashboard
+                    </button>
+                    <button data-module="secInforme" onclick="mostrarModulo('secInforme', this)" class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-slate-800 flex items-center gap-3 transition-all menu-btn">
+                        <i class="fa-solid fa-file-lines w-5 text-center"></i> Informe de gestión
+                    </button>
+                    <button onclick="mostrarModulo('secInventario', this)" class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-slate-800 flex items-center gap-3 transition-all menu-btn">
+                        <i class="fa-solid fa-boxes-stacked w-5 text-center"></i> Inventario & Costos
+                    </button>
+                    <button onclick="mostrarModulo('secMenuQR', this)" class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-slate-800 flex items-center gap-3 transition-all menu-btn">
+                        <i class="fa-solid fa-qrcode w-5 text-center"></i> Menú QR en Vivo
+                    </button>
+                    <button onclick="mostrarModulo('secProveedores', this)" class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-slate-800 flex items-center gap-3 transition-all menu-btn">
+                        <i class="fa-solid fa-truck-fast w-5 text-center"></i> Proveedores
+                    </button>
+                    <button onclick="mostrarModulo('secPedidos', this)" class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-slate-800 flex items-center gap-3 transition-all menu-btn">
+                        <i class="fa-solid fa-calendar-check w-5 text-center"></i> Encargos
+                    </button>
+                    <button data-module="secEmpresa" onclick="mostrarModulo('secEmpresa', this)" class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-slate-800 flex items-center gap-3 transition-all menu-btn">
+                        <i class="fa-solid fa-store w-5 text-center"></i> Mi empresa
+                    </button>
+                    <button data-module="secSeguridad" onclick="mostrarModulo('secSeguridad', this)" class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-slate-800 flex items-center gap-3 transition-all menu-btn">
+                        <i class="fa-solid fa-shield-halved w-5 text-center"></i> Seguridad
+                    </button>
+                </nav>
+            </div>
+            
+            <div class="p-6">
+                <div class="bg-slate-800 rounded-xl p-4 flex items-center gap-3 mb-4 border border-slate-700">
+                    <div class="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center font-bold">A</div>
+                    <div class="flex-1 overflow-hidden">
+                        <p id="usuarioSesion" class="text-sm font-bold truncate">Administrador</p>
+                        <span class="text-[10px] font-semibold uppercase tracking-wide text-amber-300">ADMIN_PANADERIA</span>
+                        <p id="estadoServidor" class="server-status" role="status">Sin conectar</p>
+                    </div>
+                </div>
+                <button onclick="cerrarSesion()" class="w-full flex items-center justify-center gap-2 text-slate-400 hover:text-white font-bold text-sm py-2 transition-all">
+                    <i class="fa-solid fa-right-from-bracket"></i> Salir
+                </button>
+            </div>
+        </aside>
+
+        <!-- CONTENIDO CENTRAL SCROLLABLE -->
+        <main class="flex-1 overflow-y-auto" id="areaReporte">
+            <div class="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
+
+                <div class="flex justify-end -mb-4">
+                    <label class="relative w-full sm:max-w-xs">
+                        <span class="sr-only">Buscar en productos, insumos, proveedores y encargos</span>
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-3.5 text-gray-400" aria-hidden="true"></i>
+                        <input id="filtroGlobal" type="search" oninput="filtrarGlobal(this.value)" placeholder="Buscar en toda la gestión" class="w-full pl-9 pr-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm">
+                    </label>
+                </div>
+
+                <!-- 1. DASHBOARD -->
+                <section id="secDashboard" class="seccion-modulo animate-fade-in block">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                        <div>
+                            <h2 class="text-3xl font-black text-slate-800">Resumen Ejecutivo</h2>
+                            <p class="text-sm text-gray-500 font-medium">Indicadores de operación, rentabilidad y compromisos del negocio.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                        <button onclick="registrarVenta()" class="bg-emerald-700 text-white text-sm font-bold px-4 py-3 rounded-xl hover:bg-emerald-800 transition flex items-center gap-2">
+                            <i class="fa-solid fa-cash-register"></i> Registrar venta
+                        </button>
+                        <button onclick="registrarMerma()" class="bg-white border border-red-200 text-red-700 text-sm font-bold px-4 py-3 rounded-xl hover:bg-red-50 transition flex items-center gap-2">
+                            <i class="fa-solid fa-triangle-exclamation"></i> Registrar merma
+                        </button>
+                        <button onclick="exportarCSV('encargos')" class="bg-white border border-gray-200 text-slate-700 text-sm font-bold px-4 py-3 rounded-xl hover:bg-gray-50 transition flex items-center gap-2" title="Descargar encargos en CSV">
+                            <i class="fa-solid fa-file-csv text-emerald-700"></i> Exportar datos
+                        </button>
+                        <button onclick="mostrarModulo('secInforme', document.querySelector('[data-module=\'secInforme\']'))" class="bg-slate-900 hover:bg-black text-white text-sm font-bold px-6 py-3 rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 flex items-center gap-2">
+                            <i class="fa-solid fa-file-lines text-red-500"></i> Ver informe profesional
+                        </button>
+                        </div>
+                    </div>
+
+                    <!-- KPIs -->
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 mb-8">
+                        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-emerald-500">
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Ventas de hoy</p>
+                            <p class="text-2xl font-black text-slate-800" id="kpiVentasHoy">$ 0</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-brand-500">
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Ventas del mes</p>
+                            <p class="text-2xl font-black text-slate-800" id="kpiVentasMes">$ 0</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-blue-500">
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Producto más vendido</p>
+                            <p class="text-xl font-black text-slate-800" id="kpiMasVendido">Sin registros</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-purple-500">
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Mermas del mes</p>
+                            <p class="text-2xl font-black text-slate-800" id="kpiMerma">$ 0</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-red-500">
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Alertas de stock bajo</p>
+                            <p class="text-2xl font-black text-slate-800" id="kpiStockBajo">0</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-l-4 border-l-slate-500">
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Encargos activos</p>
+                            <p class="text-2xl font-black text-slate-800" id="kpiEncargos">0</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8" id="resumenNarrativo">
+                        <div class="flex flex-col md:flex-row md:items-start gap-4">
+                            <div class="w-10 h-10 shrink-0 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-chart-line"></i></div>
+                            <div>
+                                <h3 class="font-bold text-slate-800">Lectura ejecutiva</h3>
+                                <p class="text-sm text-gray-600 mt-1" id="textoResumen">Cargando análisis de operación...</p>
+                                <p class="text-xs text-gray-500 mt-2">Ventas y mermas se calculan con los registros guardados en la base de datos.</p>
+                                <p class="text-xs text-gray-400 mt-3" id="fechaInforme"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gráfica -->
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                        <h3 class="font-bold text-slate-700 mb-6">Ventas registradas (últimos 6 meses)</h3>
+                        <div class="h-80 w-full">
+                            <canvas id="graficaGeneral"></canvas>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="secInforme" class="seccion-modulo hidden">
+                    <div id="informeImprimible" class="business-report">
+                        <header class="report-header">
+                            <div class="report-brand"><span class="report-mark"><i class="fa-solid fa-wheat-awn"></i></span><div><span id="empresaInformeMarca">PANAPP · OPERACIONES</span><h2>Informe de gestión</h2><p id="empresaInformeDatos"></p></div></div>
+                            <div class="report-meta"><span id="fechaInformeDetalle"></span><span class="report-demo"><i class="fa-solid fa-circle-info"></i> Datos de encargos registrados</span></div>
+                        </header>
+                        <div class="report-toolbar no-print">
+                            <label>Horizonte de entrega<select id="periodoInforme" onchange="renderizarInforme()"><option value="30">Próximos 30 días</option><option value="90">Próximos 90 días</option><option value="365">Próximos 12 meses</option><option value="todo">Todo el historial</option></select></label>
+                            <div><button onclick="exportarCSV('encargos')" class="report-button report-button-light"><i class="fa-solid fa-file-csv"></i> Descargar datos</button><button onclick="descargarInformePDF()" class="report-button"><i class="fa-solid fa-file-pdf"></i> Exportar informe PDF</button></div>
+                        </div>
+                        <p class="report-disclaimer">Documento interno de gestión. Consolida encargos capturados en PANAPP; no es factura electrónica ni documento validado por la DIAN y no reemplaza la contabilidad oficial.</p>
+                        <section class="report-metrics" aria-label="Indicadores del período">
+                            <article><span>Encargos registrados</span><strong id="reporteCantidad">0</strong><small>En el período seleccionado</small></article>
+                            <article><span>Valor comprometido</span><strong id="reporteValor">$ 0</strong><small>Valor total de los pedidos</small></article>
+                            <article><span>Abonos recibidos</span><strong id="reporteAbonos">$ 0</strong><small>Registrados en encargos</small></article>
+                            <article><span>Saldo por cobrar</span><strong id="reporteSaldo">$ 0</strong><small>Valor pendiente de pago</small></article>
+                        </section>
+                        <section class="report-analysis-grid">
+                            <article class="report-panel report-chart-panel"><div class="report-panel-heading"><div><span class="store-eyebrow">SEGUIMIENTO</span><h3>Estado de los encargos</h3></div><span id="reportePendientes" class="report-counter"></span></div><div class="report-chart-wrap"><canvas id="graficaEstadosEncargo"></canvas></div></article>
+                            <article class="report-panel report-reading"><span class="store-eyebrow">LECTURA OPERATIVA</span><h3>Prioridades del período</h3><p id="lecturaInforme"></p><div id="alertasInforme" class="report-alerts"></div></article>
+                        </section>
+                        <section class="report-panel report-table-panel"><div class="report-panel-heading"><div><span class="store-eyebrow">PEDIDOS</span><h3>Compromisos y saldos</h3></div><span class="report-small-label">Fecha · cliente · saldo</span></div><div class="table-scroll"><table class="report-table"><thead><tr><th>Entrega</th><th>Cliente</th><th>Estado</th><th>Total</th><th>Abono</th><th>Saldo</th></tr></thead><tbody id="tbInformeEncargos"></tbody></table></div></section>
+                        <section class="report-analysis-grid report-bottom-grid">
+                            <article class="report-panel report-table-panel"><div class="report-panel-heading"><div><span class="store-eyebrow">CATÁLOGO</span><h3>Margen estimado por producto</h3></div></div><div class="table-scroll"><table class="report-table"><thead><tr><th>Producto</th><th>Precio</th><th>Costo unitario</th><th>Margen</th></tr></thead><tbody id="tbInformeProductos"></tbody></table></div><p class="report-footnote">Estimación calculada con los precios y costos unitarios configurados; no incorpora gastos generales.</p></article>
+                            <article class="report-panel report-reading"><span class="store-eyebrow">INVENTARIO</span><h3>Atención de existencias</h3><p id="resumenStock"></p><div id="listaStockBajo" class="report-stock-list"></div></article>
+                        </section>
+                        <section class="report-analysis-grid report-bottom-grid">
+                            <article class="report-panel report-reading"><span class="store-eyebrow">CADUCIDAD · MATERIAS PRIMAS</span><h3>Alertas de vencimiento</h3><p id="resumenVencimientos"></p><div id="listaVencimientos" class="report-stock-list"></div></article>
+                            <article class="report-panel report-table-panel"><div class="report-panel-heading"><div><span class="store-eyebrow">COMPRAS</span><h3>Variación de precios por proveedor</h3></div></div><div class="table-scroll"><table class="report-table"><thead><tr><th>Proveedor / insumo</th><th>Anterior</th><th>Actual</th><th>Variación</th></tr></thead><tbody id="tbHistorialProveedores"></tbody></table></div></article>
+                        </section>
+                        <footer class="report-footer"><span id="empresaInformePie">PANAPP · Informe interno de operación</span><span id="pieInforme"></span></footer>
+                    </div>
+                </section>
+
+                <section id="secEmpresa" class="seccion-modulo hidden">
+                    <div class="company-settings-page">
+                        <header class="company-settings-heading">
+                            <div><span class="store-eyebrow">CONFIGURACIÓN DEL NEGOCIO</span><h2>Perfil de empresa</h2><p>Una sola ficha para identificar el menú, los pedidos y los informes de tu local.</p></div>
+                            <span class="company-settings-icon"><i class="fa-solid fa-store"></i></span>
+                        </header>
+                        <form id="formPerfilEmpresa" class="company-settings-form" onsubmit="guardarPerfilEmpresa(event)">
+                            <section class="company-form-section">
+                                <div class="company-form-title"><span>01</span><div><h3>Identidad comercial</h3><p>Nombre y presentación que verá tu clientela.</p></div></div>
+                                <div class="company-form-grid">
+                                    <label class="company-field company-field-wide">Nombre comercial<input name="nombre" id="perfilNombre" maxlength="80" required placeholder="Ej. Panadería La Espiga"></label>
+                                    <label class="company-field company-field-wide">Razón social<input name="razonSocial" id="perfilRazonSocial" maxlength="120" placeholder="Razón social registrada en el RUT"></label>
+                                    <label class="company-field">Tipo de negocio<input name="tipo" id="perfilTipo" maxlength="60" placeholder="Panadería artesanal"></label>
+                                    <label class="company-field">Frase de marca<input name="eslogan" id="perfilEslogan" maxlength="90" placeholder="Horneamos algo bueno cada día"></label>
+                                    <label class="company-field company-field-wide">Presentación para el menú<textarea name="descripcion" id="perfilDescripcion" rows="3" maxlength="240" placeholder="Cuéntale a tus clientes qué hace especial a tu negocio."></textarea></label>
+                                    <label class="company-field">NIT<input name="nit" id="perfilNit" maxlength="20" placeholder="Sin dígito de verificación"></label>
+                                    <label class="company-field">Dígito de verificación<input name="nitDV" id="perfilNitDV" maxlength="1" inputmode="numeric" pattern="[0-9]" placeholder="DV"></label>
+                                    <label class="company-field company-field-wide">Régimen / responsabilidades fiscales<input name="regimenFiscal" id="perfilRegimenFiscal" maxlength="160" placeholder="Configura según el RUT"></label>
+                                    <label class="company-field">Moneda de operación<select name="moneda" id="perfilMoneda"><option value="COP">COP · Peso colombiano</option><option value="MXN">MXN · Peso mexicano</option><option value="USD">USD · Dólar estadounidense</option><option value="CLP">CLP · Peso chileno</option><option value="PEN">PEN · Sol peruano</option><option value="ARS">ARS · Peso argentino</option></select></label>
+                                </div>
+                            </section>
+                            <section class="company-form-section">
+                                <div class="company-form-title"><span>02</span><div><h3>Contacto y ubicación</h3><p>Datos que aparecerán en la tienda digital.</p></div></div>
+                                <div class="company-form-grid">
+                                    <label class="company-field">Correo de contacto<input name="email" id="perfilEmail" type="email" maxlength="120" placeholder="hola@tuempresa.com"></label>
+                                    <label class="company-field">Teléfono del negocio<input name="telefono" id="perfilTelefono" type="tel" maxlength="30" placeholder="Teléfono de contacto"></label>
+                                    <label class="company-field company-field-wide">Dirección<input name="direccion" id="perfilDireccion" maxlength="120" placeholder="Calle, carrera y número"></label>
+                                    <label class="company-field">Ciudad<input name="ciudad" id="perfilCiudad" maxlength="80" placeholder="Yopal"></label>
+                                    <label class="company-field">Departamento<input name="departamento" id="perfilDepartamento" maxlength="80" placeholder="Casanare"></label>
+                                    <label class="company-field">Horario de atención<input name="horario" id="perfilHorario" maxlength="100" placeholder="Lun-Sáb · 6:00 a. m. - 7:00 p. m."></label>
+                                </div>
+                            </section>
+                            <section class="company-form-section">
+                                <div class="company-form-title"><span>04</span><div><h3>Habilitación de facturación DIAN</h3><p>Datos de referencia; PANAPP no transmite ni valida documentos con la DIAN.</p></div></div>
+                                <div class="company-form-grid">
+                                    <label class="company-field">Resolución de numeración<input name="dianResolucion" id="perfilDianResolucion" maxlength="40" placeholder="Número de resolución"></label>
+                                    <label class="company-field">Prefijo autorizado<input name="dianPrefijo" id="perfilDianPrefijo" maxlength="10" placeholder="Ej. FE"></label>
+                                    <label class="company-field">Rango autorizado<input name="dianRango" id="perfilDianRango" maxlength="40" placeholder="Desde - hasta"></label>
+                                    <label class="company-field">Vigencia hasta<input name="dianVigencia" id="perfilDianVigencia" type="date"></label>
+                                    <p class="company-field company-field-wide">La facturación electrónica válida requiere habilitación, numeración autorizada, firma digital, generación del CUFE y transmisión/validación por un proveedor tecnológico o software autorizado. No uses estos datos para emitir un comprobante legal desde esta aplicación.</p>
+                                </div>
+                            </section>
+                            <section class="company-form-section">
+                                <div class="company-form-title"><span>03</span><div><h3>Publicación y pedidos</h3><p>Necesarios para abrir el QR en otros teléfonos y recibir pedidos.</p></div></div>
+                                <div class="company-form-grid">
+                                    <label class="company-field company-field-wide">Dirección pública del menú<input name="urlPublica" id="urlPublicaMenu" type="url" placeholder="https://tuempresa.com/menu"></label>
+                                    <label class="company-field company-field-wide">WhatsApp con código de país<input name="whatsapp" id="whatsappLocal" type="tel" inputmode="tel" placeholder="573001234567"><small>Incluye país y número, solo dígitos; por ejemplo, 57 para Colombia. El envío del menú se activa cuando configures este número real.</small></label>
+                                    <label class="company-field company-field-wide">Identificador de empresa<input id="perfilIdEmpresa" readonly><small>Referencia local para vincular este negocio a una cuenta compartida cuando se conecte el backend.</small></label>
+                                </div>
+                            </section>
+                            <footer class="company-form-footer"><p id="estadoPerfilEmpresa" role="status">Los cambios se guardan en este navegador hasta conectar una base de datos compartida.</p><button class="company-save-button" type="submit"><i class="fa-solid fa-floppy-disk"></i> Guardar perfil del negocio</button></footer>
+                        </form>
+                    </div>
+                </section>
+
+                <section id="secSeguridad" class="seccion-modulo hidden">
+                    <div class="security-page">
+                        <header class="company-settings-heading"><div><span class="store-eyebrow">PROTECCIÓN DE LA CUENTA</span><h2>Seguridad</h2><p>Neon Auth administra la cuenta; PANAPP verifica la sesión y los permisos de tu panadería.</p></div><span class="company-settings-icon"><i class="fa-solid fa-shield-halved"></i></span></header>
+                        <div class="security-status-panel"><span class="security-status-icon"><i class="fa-solid fa-lock"></i></span><div><strong>Sesión protegida por Neon Auth y PANAPP</strong><p>Los datos de operación requieren una sesión administradora. El menú público expone únicamente el catálogo y los datos comerciales publicados.</p><small id="resumenSeguridad">Sesión activa en este navegador.</small></div></div>
+                        <form id="formCambiarClave" class="company-settings-form security-password-form" onsubmit="cambiarClaveAdministrador(event)">
+                            <div class="company-form-section"><div class="company-form-title"><span>01</span><div><h3>Cambiar contraseña</h3><p>Usa una contraseña única de 12 caracteres o más.</p></div></div><div class="company-form-grid">
+                                <label class="company-field company-field-wide">Contraseña actual<input id="claveActual" type="password" autocomplete="current-password" minlength="12" required></label>
+                                <label class="company-field">Nueva contraseña<input id="claveNueva" type="password" autocomplete="new-password" minlength="12" required></label>
+                                <label class="company-field">Confirmar nueva contraseña<input id="claveNuevaConfirmar" type="password" autocomplete="new-password" minlength="12" required></label>
+                            </div></div>
+                            <footer class="company-form-footer"><p id="estadoCambioClave" role="status">Tu sesión expira al reiniciar el servidor o después de ocho horas.</p><button class="company-save-button" type="submit"><i class="fa-solid fa-key"></i> Actualizar contraseña</button></footer>
+                        </form>
+                        <div class="security-boundary"><i class="fa-solid fa-triangle-exclamation"></i><p>Este servidor escucha solo en este computador. No uses HTTP abierto por Wi-Fi: para acceso desde otros equipos se requiere HTTPS válido y reglas de firewall.</p></div>
+                    </div>
+                </section>
+
+
+                <!-- 2. INVENTARIO Y COSTOS (ESCANDALLO) -->
+                <section id="secInventario" class="seccion-modulo hidden">
+                    <div class="mb-8">
+                        <h2 class="text-3xl font-black text-slate-800">Inventario y Escandallo</h2>
+                        <p class="text-sm text-gray-500 font-medium">Controle sus productos finales y costos de materia prima.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <!-- Productos Finales -->
+                        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div class="p-6 border-b border-gray-50 flex justify-between items-center bg-slate-50/50">
+                                <div><h3 class="font-bold text-slate-800"><i class="fa-solid fa-bread-slice text-brand-500 mr-2"></i> Productos Finales</h3><p class="text-xs text-gray-500 mt-1">Stock disponible y costo unitario de producción.</p></div>
+                                <button onclick="agregarElemento('producto')" class="text-xs bg-slate-900 text-white px-3 py-2 rounded-lg font-bold hover:bg-slate-800 transition"><i class="fa-solid fa-plus mr-1"></i> Producto</button>
+                            </div>
+                            <div class="overflow-x-auto p-4">
+                                <table class="w-full text-sm text-left">
+                                    <thead class="text-xs text-gray-400 uppercase bg-gray-50/50">
+                                        <tr>
+                                            <th class="p-3 rounded-l-lg">Producto</th>
+                                            <th class="p-3">Stock Final</th>
+                                            <th class="p-3 rounded-r-lg">Costo Producción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbProductosInv" class="divide-y divide-gray-50"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Materia Prima -->
+                        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div class="p-6 border-b border-gray-50 flex justify-between items-center bg-slate-50/50">
+                                <h3 class="font-bold text-slate-800"><i class="fa-solid fa-scale-balanced text-blue-500 mr-2"></i> Materia Prima</h3>
+                                <button onclick="agregarElemento('insumo')" class="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-slate-800 transition"><i class="fa-solid fa-plus mr-1"></i> Añadir insumo</button>
+                            </div>
+                            <div class="overflow-x-auto p-4">
+                                <table class="w-full text-sm text-left">
+                                    <thead class="text-xs text-gray-400 uppercase bg-gray-50/50">
+                                        <tr>
+                                            <th class="p-3 rounded-l-lg">Insumo</th>
+                                            <th class="p-3">Stock Bodega</th>
+                                            <th class="p-3">Mínimo</th>
+                                            <th class="p-3">Vencimiento</th>
+                                            <th class="p-3 rounded-r-lg">Costo unitario</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbInsumosInv" class="divide-y divide-gray-50"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+
+                <!-- 3. MENÚ DINÁMICO Y QR -->
+                <section id="secMenuQR" class="seccion-modulo hidden">
+                    <div class="mb-8">
+                        <h2 class="text-3xl font-black text-slate-800">Menú Interactivo & QR</h2>
+                        <p class="text-sm text-gray-500 font-medium">Actualice precios aquí y se reflejarán instantáneamente en el celular del cliente.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <!-- Editor de Precios -->
+                        <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div class="p-6 border-b border-gray-50 bg-slate-50/50">
+                                <h3 class="font-bold text-slate-800">Catálogo de Precios</h3>
+                            </div>
+                            <div class="overflow-x-auto p-4">
+                                <table class="w-full text-sm text-left">
+                                    <thead class="text-xs text-gray-400 uppercase">
+                                        <tr>
+                                            <th class="p-3">Producto</th>
+                                            <th class="p-3 w-32">Precio ($)</th>
+                                            <th class="p-3 text-right">Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbMenuEditable" class="divide-y divide-gray-50">
+                                        <!-- JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Panel QR -->
+                        <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center">
+                            <div class="w-16 h-16 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center text-2xl mb-4">
+                                <i class="fa-solid fa-qrcode"></i>
+                            </div>
+                            <h3 class="font-black text-slate-800 text-xl mb-2">QR del Local</h3>
+                            <p class="text-xs text-gray-500 mb-8 leading-relaxed">Imprima este código para colocarlo en mesas o mostradores.</p>
+                            
+                            <div id="codigoQR" class="qr-frame"></div>
+                            <p id="estadoQR" class="qr-status">Configura una dirección HTTPS pública para imprimir un QR que abra en otros teléfonos.</p>
+                            <button onclick="mostrarModulo('secEmpresa', document.querySelector('[data-module=\'secEmpresa\']'))" class="qr-save-button"><i class="fa-solid fa-sliders"></i> Configurar datos del local</button>
+                            <button id="descargarQR" onclick="descargarCodigoQR()" class="qr-download-button" disabled><i class="fa-solid fa-download"></i> Descargar QR para imprimir</button>
+                            
+                            <a href="/menu" target="_blank" rel="noopener noreferrer" class="w-full bg-slate-100 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 transition text-center">
+                                Abrir menú público
+                            </a>
+                        </div>
+                    </div>
+                </section>
+
+
+                <!-- 4. PROVEEDORES -->
+                <section id="secProveedores" class="seccion-modulo hidden">
+                    <div class="flex justify-between items-center mb-8 gap-4">
+                        <div>
+                            <h2 class="text-3xl font-black text-slate-800">Proveedores</h2>
+                            <p class="text-sm text-gray-500 font-medium">Directorio de compras, contactos y estado comercial.</p>
+                        </div>
+                        <button onclick="agregarElemento('proveedor')" class="shrink-0 bg-slate-900 text-white text-sm font-bold px-4 py-3 rounded-xl hover:bg-slate-800"><i class="fa-solid fa-plus mr-1"></i> Nuevo proveedor</button>
+                    </div>
+
+                    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div class="overflow-x-auto p-4">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-gray-400 uppercase bg-gray-50/50">
+                                    <tr>
+                                        <th class="p-4 rounded-l-lg">Empresa Proveedora</th>
+                                        <th class="p-4">Material Principal</th>
+                                        <th class="p-4">Costo Pactado</th>
+                                        <th class="p-4">Contacto</th>
+                                        <th class="p-4 rounded-r-lg text-right">Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbProveedores" class="divide-y divide-gray-50">
+                                    <!-- JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+
+                <!-- 5. ENCARGOS Y PEDIDOS ESPECIALES -->
+                <section id="secPedidos" class="seccion-modulo hidden">
+                    <div class="flex justify-between items-center mb-8 gap-4">
+                        <div>
+                            <h2 class="text-3xl font-black text-slate-800">Encargos Especiales</h2>
+                            <p class="text-sm text-gray-500 font-medium">Seguimiento de entregas, anticipos y saldos pendientes.</p>
+                        </div>
+                        <button onclick="agregarElemento('encargo')" class="shrink-0 bg-slate-900 text-white text-sm font-bold px-4 py-3 rounded-xl hover:bg-slate-800"><i class="fa-solid fa-plus mr-1"></i> Nuevo encargo</button>
+                    </div>
+
+                    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div class="overflow-x-auto p-4">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-gray-400 uppercase bg-gray-50/50">
+                                    <tr>
+                                        <th class="p-4 rounded-l-lg">Cliente</th>
+                                        <th class="p-4">Detalle del Pedido</th>
+                                        <th class="p-4">Fecha Entrega</th>
+                                        <th class="p-4">Finanzas (Abono / Total)</th>
+                                        <th class="p-4 rounded-r-lg text-right">Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbEncargos" class="divide-y divide-gray-50">
+                                    <!-- JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

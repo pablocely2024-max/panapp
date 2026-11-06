@@ -1,0 +1,9 @@
+.venv/
+.venv-neon/
+.venv-panapp-*/
+.devcert/
+__pycache__/
+*.py[cod]
+.env
+.env.local
+.panapp-secret

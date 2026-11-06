@@ -1,0 +1,113 @@
+<!-- Módulo 3: catálogo público; nunca carga datos ni controles de administración. -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#fffaf2">
+    <meta name="description" content="Consulta el menú y los productos disponibles de la panadería.">
+    <title>Menú de hoy · PANAPP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { bakery: { cream: '#fffaf2', amber: '#d97706', brown: '#713f12', slate: '#1e293b' } },
+                    fontFamily: { sans: ['DM Sans', 'sans-serif'], display: ['Fraunces', 'serif'] }
+                }
+            }
+        };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="min-h-screen bg-[#fffaf2] font-sans text-slate-800">
+    <header class="sticky top-0 z-10 border-b border-amber-100 bg-[#fffaf2]/95 backdrop-blur">
+        <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4">
+            <a href="/menu" class="flex min-w-0 items-center gap-3">
+                <span class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-600 text-lg text-white"><i class="fa-solid fa-wheat-awn" aria-hidden="true"></i></span>
+                <span class="min-w-0"><strong id="menuBusinessName" class="block truncate text-lg font-extrabold text-slate-900">Panadería PANAPP</strong><small id="menuBusinessTagline" class="block truncate text-xs text-slate-500">Recién hecho para ti</small></span>
+            </a>
+            <a id="menuWhatsApp" href="#" target="_blank" rel="noopener noreferrer" class="hidden shrink-0 rounded-full bg-green-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-800">
+                <i class="fa-brands fa-whatsapp mr-1" aria-hidden="true"></i> Pedir
+            </a>
+        </div>
+    </header>
+
+    <main class="mx-auto max-w-6xl px-5 pb-16">
+        <section class="overflow-hidden rounded-b-[2rem] bg-slate-900 px-6 py-12 text-white sm:px-10 sm:py-16">
+            <p id="menuBusinessType" class="text-xs font-bold uppercase tracking-[.22em] text-amber-300">Panadería artesanal</p>
+            <h1 class="mt-4 max-w-2xl font-display text-4xl leading-tight sm:text-6xl">Una vitrina hecha para disfrutar.</h1>
+            <p id="menuBusinessDescription" class="mt-5 max-w-2xl leading-7 text-slate-300">Productos frescos, preparados cada día.</p>
+            <p id="menuBusinessLocation" class="mt-5 hidden text-sm text-amber-100"><i class="fa-solid fa-location-dot mr-2" aria-hidden="true"></i></p>
+        </section>
+
+        <section class="py-9" aria-labelledby="catalogTitle">
+            <div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-[.18em] text-amber-700">Menú público</p>
+                    <h2 id="catalogTitle" class="mt-2 font-display text-3xl text-slate-900">Lo que horneamos hoy</h2>
+                    <p id="menuUpdatedAt" class="mt-2 text-sm text-slate-500" role="status">Cargando catálogo…</p>
+                </div>
+                <label class="relative block w-full sm:max-w-sm">
+                    <span class="sr-only">Buscar productos</span>
+                    <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true"></i>
+                    <input id="menuSearch" type="search" maxlength="100" placeholder="Buscar panes, repostería…" class="w-full rounded-xl border border-amber-100 bg-white py-3.5 pl-11 pr-4 outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100">
+                </label>
+            </div>
+            <nav id="menuCategories" class="mt-6 flex gap-2 overflow-x-auto pb-2" aria-label="Filtrar por categoría"></nav>
+            <div id="menuProducts" class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"></div>
+            <p id="menuEmpty" class="hidden rounded-2xl border border-dashed border-amber-200 bg-white p-8 text-center text-slate-600">No encontramos productos disponibles con esa búsqueda.</p>
+            <p id="menuError" class="hidden rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800" role="alert"></p>
+        </section>
+    </main>
+
+    <footer class="border-t border-amber-100 bg-white">
+        <div class="mx-auto flex max-w-6xl flex-col gap-2 px-5 py-6 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+            <span id="menuFooterBusiness">PANAPP</span>
+            <span id="menuBusinessHours"></span>
+            <span>Menú actualizado automáticamente</span>
+        </div>
+    </footer>
+    <dialog id="menuOrderDialog" class="w-[calc(100%-2rem)] max-w-lg rounded-3xl border border-amber-100 bg-white p-0 text-slate-800 shadow-2xl backdrop:bg-slate-950/60">
+        <form id="menuOrderForm" class="space-y-5 p-6 sm:p-8">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-[.18em] text-amber-700">Pedido digital</p>
+                    <h2 id="orderProductName" class="mt-2 font-display text-2xl text-slate-900"></h2>
+                    <p id="orderProductPrice" class="mt-1 text-sm text-slate-600"></p>
+                </div>
+                <button id="closeOrderDialog" type="button" class="rounded-full px-3 py-2 text-slate-500 hover:bg-slate-100" aria-label="Cerrar pedido">✕</button>
+            </div>
+            <label class="block text-sm font-semibold">Tu nombre
+                <input id="orderCustomerName" required minlength="2" maxlength="120" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3" autocomplete="name">
+            </label>
+            <div class="grid gap-4 sm:grid-cols-2">
+                <label class="block text-sm font-semibold">Entrega
+                    <select id="orderType" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3">
+                        <option value="pickup">Para recoger</option>
+                        <option value="table">En mesa</option>
+                        <option value="delivery">Domicilio</option>
+                    </select>
+                </label>
+                <label id="orderTableField" class="hidden block text-sm font-semibold">Número de mesa
+                    <input id="orderTableNumber" type="number" min="1" max="999" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3">
+                </label>
+            </div>
+            <label id="orderAddressField" class="hidden block text-sm font-semibold">Dirección de entrega
+                <input id="orderAddress" maxlength="300" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3" autocomplete="street-address">
+            </label>
+            <label class="block text-sm font-semibold">Cantidad
+                <input id="orderQuantity" type="number" value="1" min="1" max="50" required class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3">
+            </label>
+            <p id="orderError" class="hidden rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"></p>
+            <button id="submitMenuOrder" type="submit" class="w-full rounded-xl bg-slate-900 px-5 py-4 font-bold text-white hover:bg-slate-800">Enviar pedido</button>
+            <p class="text-xs leading-5 text-slate-500">El local confirmará disponibilidad y tiempo de entrega por WhatsApp.</p>
+        </form>
+    </dialog>
+    <script src="menu.js" defer></script>
+</body>
+</html>
