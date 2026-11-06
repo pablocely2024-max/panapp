@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timedelta, timezone
+import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -21,7 +22,10 @@ from saas_app import (
     TenantCreateBody,
     public_catalog,
     resolve_public_hostname,
+    send_smtp_email,
+    send_tenant_admin_recovery_code,
     subscription_revenue_report,
+    subscription_revenue_summary,
     request_global_tenant_email_code,
     tenant_menu_qr,
     tenant_menu_url,
@@ -31,6 +35,9 @@ from saas_app import (
     verify_legacy_tenant_credentials,
     neon_tenant_login,
     verify_neon_access_token,
+    current_session,
+    SESSION_IDLE_TIMEOUT_MINUTES,
+    TENANT_SESSION_COOKIE,
 )
 
 
@@ -207,6 +214,42 @@ class PublicCatalogTests(unittest.TestCase):
 
         self.assertEqual(catalog["business"]["nombre"], "Panadería La Central")
         self.assertEqual(catalog["products"], [])
+
+    @patch("saas_app.read_tenant_state")
+    def test_replaces_default_panapp_brand_with_tenant_name(self, read_state):
+        read_state.return_value = {
+            "revision": 1,
+            "data": {"perfilEmpresa": {"nombre": "Panadería PANAPP"}},
+        }
+
+        catalog = public_catalog("tenant-id", "Panadería La Central")
+
+        self.assertEqual(catalog["business"]["nombre"], "Panadería La Central")
+
+
+class SmtpEmailTests(unittest.TestCase):
+    @patch.dict(os.environ, {"PANAPP_SMTP_PASSWORD": "test-app-password"}, clear=True)
+    @patch("saas_app.smtplib.SMTP")
+    def test_uses_company_gmail_defaults_and_confirms_smtp_acceptance(self, smtp):
+        server = smtp.return_value.__enter__.return_value
+        server.send_message.return_value = {}
+
+        self.assertTrue(send_smtp_email("admin@example.test", "Código", "Contenido"))
+
+        smtp.assert_called_once_with("smtp.gmail.com", 587, timeout=8)
+        server.login.assert_called_once_with("panappanaderias@gmail.com", "test-app-password")
+        message = server.send_message.call_args.args[0]
+        self.assertEqual(message["From"], "panappanaderias@gmail.com")
+        self.assertEqual(message["To"], "admin@example.test")
+
+    @patch.dict(os.environ, {"PANAPP_SMTP_PASSWORD": "test-app-password"}, clear=True)
+    @patch("saas_app.smtplib.SMTP")
+    def test_rejects_message_when_smtp_refuses_recipient(self, smtp):
+        server = smtp.return_value.__enter__.return_value
+        server.send_message.return_value = {"admin@example.test": (550, b"mailbox unavailable")}
+
+        with self.assertRaises(smtplib.SMTPRecipientsRefused):
+            send_smtp_email("admin@example.test", "Código", "Contenido")
 
 
 class NeonTokenVerificationTests(unittest.TestCase):
