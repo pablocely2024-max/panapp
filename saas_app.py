@@ -18,6 +18,7 @@ import csv
 from email.message import EmailMessage
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import quote, urlparse
@@ -1677,7 +1678,7 @@ def subscription_revenue_summary(
     return {
         "month": month,
         "payment_count": len(payments),
-        "total": sum(payment["amount"] for payment in payments),
+        "total": float(sum((Decimal(str(row[2])) for row in rows), Decimal("0"))),
         "payments": payments,
     }
 
