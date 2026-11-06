@@ -1,5 +1,5 @@
 // Frontend público del menú; solo consume el catálogo reducido de /api/menu.
-const tenantBasePath = window.location.pathname.match(/^\/t\/[^/]+/)?.[0] || '';
+const tenantBasePath = window.location.pathname.match(/^\/(?:t|m)\/[^/]+/)?.[0] || '';
 const tenantPath = path => `${tenantBasePath}${path}`;
 const menuState = {
     category: 'Todos',

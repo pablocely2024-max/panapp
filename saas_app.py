@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
+import io
 import logging
 import os
 import re
 import secrets
 import socket
+import smtplib
 import threading
 import time
 import uuid
+import csv
+from email.message import EmailMessage
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -21,6 +24,7 @@ from urllib.parse import quote, urlparse
 
 import psycopg
 import jwt
+import qrcode
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
@@ -28,10 +32,20 @@ from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError
 from jwt import PyJWKClient
 from pydantic import BaseModel, Field
 from psycopg.types.json import Jsonb
+from qrcode.image.svg import SvgPathImage
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_NEON_AUTH_URL = "https://ep-lucky-lake-b8de2v7l.neonauth.c-14.us-east-1.aws.neon.tech/neondb/auth"
+
+
+def resolve_public_hostname(configured_domain: str | None, external_hostname: str, external_url: str) -> str:
+    candidates = (configured_domain, external_hostname, urlparse(external_url).hostname)
+    for candidate in candidates:
+        hostname = (candidate or "").strip().lower().lstrip(".")
+        if hostname:
+            return hostname
+    return ""
 
 
 def load_environment_files() -> None:
@@ -68,11 +82,21 @@ def read_port_setting(name: str, default: str) -> int:
 
 
 load_environment_files()
-HOST = os.environ.get("PANAPP_HOST", "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1")
-PORT = read_port_setting("PANAPP_PORT", os.environ.get("PORT", "8765"))
-BASE_DOMAIN = os.environ.get(
-    "PANAPP_BASE_DOMAIN", os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")
-).strip().lower().lstrip(".")
+IS_RENDER = os.environ.get("RENDER", "").lower() == "true"
+HOST = os.environ.get("PANAPP_HOST", "0.0.0.0" if IS_RENDER else "127.0.0.1")
+PORT = (
+    read_port_setting("PORT", os.environ.get("PANAPP_PORT", "8765"))
+    if IS_RENDER
+    else read_port_setting("PANAPP_PORT", os.environ.get("PORT", "8765"))
+)
+RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip().lower()
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
+RENDER_URL_HOSTNAME = (urlparse(RENDER_EXTERNAL_URL).hostname or "").lower()
+BASE_DOMAIN = resolve_public_hostname(
+    os.environ.get("PANAPP_BASE_DOMAIN"),
+    RENDER_EXTERNAL_HOSTNAME,
+    RENDER_EXTERNAL_URL,
+)
 LEGACY_TENANT_SLUG = os.environ.get("PANAPP_LEGACY_TENANT_SLUG", "panaderia-principal").strip().lower()
 DATABASE_URL = os.environ.get("DATABASE_URL")
 PANAPP_DB_VARIABLES = (
@@ -134,7 +158,16 @@ app = FastAPI(
     redoc_url=None,
     lifespan=lifespan,
 )
-trusted_hosts = ["127.0.0.1", "localhost", "testserver", "[::1]", *ALLOWED_HOSTS]
+trusted_hosts = [
+    "127.0.0.1",
+    "localhost",
+    "testserver",
+    "[::1]",
+    *ALLOWED_HOSTS,
+    RENDER_EXTERNAL_HOSTNAME,
+    RENDER_URL_HOSTNAME,
+]
+trusted_hosts = [host for host in trusted_hosts if host]
 if BASE_DOMAIN:
     trusted_hosts.extend([BASE_DOMAIN, f"*.{BASE_DOMAIN}"])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
@@ -272,9 +305,14 @@ def initialize_database() -> None:
                 slug TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL,
                 status TEXT NOT NULL CHECK (status IN ('active', 'suspended', 'canceled')),
+                menu_token TEXT UNIQUE,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
             """
+        )
+        connection.execute("ALTER TABLE panapp_tenants ADD COLUMN IF NOT EXISTS menu_token TEXT")
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS panapp_tenants_menu_token_unique ON panapp_tenants (menu_token) WHERE menu_token IS NOT NULL"
         )
         connection.execute(
             """
@@ -329,6 +367,27 @@ def initialize_database() -> None:
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE (panaderia_id, username)
             )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS panapp_invitations (
+                invitation_id UUID PRIMARY KEY,
+                token_hash TEXT NOT NULL UNIQUE,
+                user_id UUID NOT NULL REFERENCES panapp_users(user_id),
+                panaderia_id UUID NOT NULL REFERENCES panapp_tenants(panaderia_id),
+                email TEXT NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL,
+                used_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS panapp_invitations_pending_idx
+            ON panapp_invitations (user_id, email, expires_at)
+            WHERE used_at IS NULL
             """
         )
         connection.execute("ALTER TABLE panapp_users ALTER COLUMN salt DROP NOT NULL")
@@ -419,6 +478,14 @@ def initialize_database() -> None:
             """,
             (LEGACY_TENANT_ID, LEGACY_TENANT_SLUG),
         )
+        tenants_without_menu_token = connection.execute(
+            "SELECT panaderia_id FROM panapp_tenants WHERE menu_token IS NULL"
+        ).fetchall()
+        for (tenant_id,) in tenants_without_menu_token:
+            connection.execute(
+                "UPDATE panapp_tenants SET menu_token = %s WHERE panaderia_id = %s AND menu_token IS NULL",
+                (secrets.token_urlsafe(18), tenant_id),
+            )
 
         old_state_exists = connection.execute(
             "SELECT to_regclass('public.panapp_state') IS NOT NULL"
@@ -585,7 +652,7 @@ def tenant_by_slug(slug: str, *, must_be_active: bool = True) -> dict:
     with connect_db() as connection:
         row = connection.execute(
             """
-            SELECT tenant.panaderia_id, tenant.slug, tenant.name, tenant.status, tenant.created_at,
+            SELECT tenant.panaderia_id, tenant.slug, tenant.name, tenant.status, tenant.created_at, tenant.menu_token,
                    subscription.status, subscription.current_period_end
             FROM panapp_tenants tenant
             LEFT JOIN LATERAL (
@@ -606,13 +673,14 @@ def tenant_by_slug(slug: str, *, must_be_active: bool = True) -> dict:
         "name": row[2],
         "status": row[3],
         "created_at": row[4].isoformat(),
-        "subscription_status": row[5],
-        "subscription_ends_at": row[6].isoformat() if row[6] else None,
+        "menu_token": row[5],
+        "subscription_status": row[6],
+        "subscription_ends_at": row[7].isoformat() if row[7] else None,
     }
     if must_be_active:
         if tenant["status"] != "active":
             raise HTTPException(status_code=423, detail="Esta panadería no tiene el servicio activo.")
-        if row[5] != "active" or row[6] is None or row[6] <= datetime.now(timezone.utc):
+        if row[6] != "active" or row[7] is None or row[7] <= datetime.now(timezone.utc):
             with connect_db() as connection:
                 connection.execute(
                     "UPDATE panapp_tenants SET status = 'suspended' WHERE panaderia_id = %s",
@@ -631,6 +699,19 @@ def tenant_by_slug(slug: str, *, must_be_active: bool = True) -> dict:
                 )
             raise HTTPException(status_code=423, detail="La suscripción venció; contacta a PANAPP.")
     return tenant
+
+
+def tenant_by_menu_token(menu_token: str, *, must_be_active: bool = True) -> dict:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", menu_token):
+        raise HTTPException(status_code=404, detail="El enlace del menú no es válido.")
+    with connect_db() as connection:
+        row = connection.execute(
+            "SELECT slug FROM panapp_tenants WHERE menu_token = %s",
+            (menu_token,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="El enlace del menú no existe.")
+    return tenant_by_slug(row[0], must_be_active=must_be_active)
 
 
 def current_session(request: Request) -> dict | None:
@@ -712,6 +793,82 @@ def issue_session(response: Response, request: Request, principal_type: str, pri
     )
 
 
+def create_admin_invitation(connection, user_id: uuid.UUID, tenant_id: uuid.UUID, email: str) -> str:
+    token = secrets.token_urlsafe(32)
+    connection.execute(
+        """
+        INSERT INTO panapp_invitations
+            (invitation_id, token_hash, user_id, panaderia_id, email, expires_at)
+        VALUES (%s, %s, %s, %s, %s, NOW() + INTERVAL '7 days')
+        """,
+        (uuid.uuid4(), hash_token(token), user_id, tenant_id, email),
+    )
+    return token
+
+
+def send_admin_invitation(email: str, tenant_name: str, invitation_url: str) -> bool:
+    host = os.environ.get("PANAPP_SMTP_HOST", "").strip()
+    username = os.environ.get("PANAPP_SMTP_USER", "").strip()
+    password = os.environ.get("PANAPP_SMTP_PASSWORD", "")
+    sender = os.environ.get("PANAPP_SMTP_FROM", "").strip()
+    if not all((host, username, password, sender)):
+        return False
+
+    port = read_port_setting("PANAPP_SMTP_PORT", "587")
+    use_ssl = os.environ.get("PANAPP_SMTP_USE_SSL", "").strip().lower() in {"1", "true", "yes"}
+    message = EmailMessage()
+    message["Subject"] = f"Invitación de acceso a {tenant_name} · PANAPP"
+    message["From"] = sender
+    message["To"] = email
+    message.set_content(
+        f"""Hola:
+
+Se autorizó tu correo como administrador de {tenant_name} en PANAPP.
+Abre el enlace seguro para crear o verificar tu cuenta y elegir tu contraseña:
+
+{invitation_url}
+
+El enlace vence en 7 días y solo se puede usar una vez. Por seguridad, PANAPP nunca envía contraseñas por correo.
+Si no esperabas esta invitación, ignora este mensaje.
+"""
+    )
+
+    if use_ssl:
+        with smtplib.SMTP_SSL(host, port, timeout=15) as server:
+            server.login(username, password)
+            server.send_message(message)
+    else:
+        with smtplib.SMTP(host, port, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(username, password)
+            server.send_message(message)
+    return True
+
+
+def deliver_admin_invitation(email: str, tenant_name: str, invitation_url: str) -> dict:
+    try:
+        sent = send_admin_invitation(email, tenant_name, invitation_url)
+    except (OSError, smtplib.SMTPException, RuntimeError, ValueError):
+        logging.exception("No se pudo enviar la invitación PANAPP al administrador.")
+        return {
+            "invitation_sent": False,
+            "invitation_url": invitation_url,
+            "invitation_message": "El acceso quedó autorizado, pero no se pudo enviar el correo. Configura SMTP o copia el enlace seguro.",
+        }
+    if not sent:
+        return {
+            "invitation_sent": False,
+            "invitation_url": invitation_url,
+            "invitation_message": "El acceso quedó autorizado, pero falta configurar el correo SMTP. Copia el enlace seguro para compartirlo.",
+        }
+    return {
+        "invitation_sent": True,
+        "invitation_message": "Se envió un enlace seguro para crear la contraseña. No se envían contraseñas por correo.",
+    }
+
+
 def require_same_origin(request: Request) -> None:
     origin = request.headers.get("origin")
     if not origin:
@@ -784,7 +941,7 @@ def public_catalog(tenant_id: str) -> dict:
 
 
 def asset(name: str) -> FileResponse:
-    if name not in {"auth.html", "admin.html", "menu.html", "superadmin.html", "auth.js", "neon-auth.js", "admin.js", "menu.js", "superadmin.js", "styles.css"}:
+    if name not in {"auth.html", "admin.html", "menu.html", "superadmin.html", "cookie-policy.html", "auth.js", "neon-auth.js", "admin.js", "menu.js", "superadmin.js", "styles.css"}:
         raise HTTPException(status_code=404, detail="Recurso no encontrado.")
     media_types = {
         ".html": "text/html; charset=utf-8",
@@ -849,6 +1006,11 @@ def root():
 @app.get("/superadmin")
 def superadmin_page():
     return asset("superadmin.html")
+
+
+@app.get("/cookies")
+def cookie_policy_page():
+    return asset("cookie-policy.html")
 
 
 @app.get("/superadmin.js")
@@ -1004,7 +1166,7 @@ def superadmin_tenants(_: Annotated[dict, Depends(require_superadmin)]):
     with connect_db() as connection:
         rows = connection.execute(
             """
-            SELECT tenant.panaderia_id, tenant.slug, tenant.name, tenant.status, tenant.created_at,
+            SELECT tenant.panaderia_id, tenant.slug, tenant.name, tenant.status, tenant.created_at, tenant.menu_token,
                    subscription.billing_period, subscription.status, plan.code, plan.name,
                    plan.monthly_amount, plan.annual_amount
             FROM panapp_tenants tenant
@@ -1025,12 +1187,13 @@ def superadmin_tenants(_: Annotated[dict, Depends(require_superadmin)]):
             "name": row[2],
             "status": row[3],
             "created_at": row[4].isoformat(),
-            "billing_period": row[5],
-            "subscription_status": row[6],
-            "plan_code": row[7],
-            "plan_name": row[8],
-            "monthly_amount": float(row[9]) if row[9] is not None else None,
-            "annual_amount": float(row[10]) if row[10] is not None else None,
+            "menu_token": row[5],
+            "billing_period": row[6],
+            "subscription_status": row[7],
+            "plan_code": row[8],
+            "plan_name": row[9],
+            "monthly_amount": float(row[10]) if row[10] is not None else None,
+            "annual_amount": float(row[11]) if row[11] is not None else None,
         }
         for row in rows
     ]
@@ -1046,6 +1209,7 @@ def create_tenant(body: TenantCreateBody, request: Request, _: Annotated[dict, D
     tenant_id = uuid.uuid4()
     subscription_id = uuid.uuid4()
     user_id = uuid.uuid4()
+    menu_token = secrets.token_urlsafe(18)
     if NEON_AUTH_URL:
         salt = password_digest = None
     else:
@@ -1062,12 +1226,12 @@ def create_tenant(body: TenantCreateBody, request: Request, _: Annotated[dict, D
             raise HTTPException(status_code=422, detail="El plan seleccionado no está disponible.")
         tenant = connection.execute(
             """
-            INSERT INTO panapp_tenants (panaderia_id, slug, name, status)
-            VALUES (%s, %s, %s, 'active')
+            INSERT INTO panapp_tenants (panaderia_id, slug, name, status, menu_token)
+            VALUES (%s, %s, %s, 'active', %s)
             ON CONFLICT (slug) DO NOTHING
             RETURNING panaderia_id
             """,
-            (tenant_id, slug, body.name.strip()),
+            (tenant_id, slug, body.name.strip(), menu_token),
         ).fetchone()
         if not tenant:
             raise HTTPException(status_code=409, detail="El identificador de panadería ya está en uso.")
@@ -1090,6 +1254,11 @@ def create_tenant(body: TenantCreateBody, request: Request, _: Annotated[dict, D
             """,
             (user_id, tenant_id, email, salt.hex() if salt else None, password_digest, ROLE_ADMIN),
         )
+        invitation_token = (
+            create_admin_invitation(connection, user_id, tenant_id, email)
+            if NEON_AUTH_URL
+            else None
+        )
         connection.execute(
             """
             INSERT INTO panapp_state (panaderia_id, state_key, payload)
@@ -1097,7 +1266,25 @@ def create_tenant(body: TenantCreateBody, request: Request, _: Annotated[dict, D
             """,
             (tenant_id, Jsonb({"productos": [], "insumos": [], "proveedores": [], "encargos": [], "ventas": [], "mermas": []})),
         )
-    return {"id": str(tenant_id), "slug": slug, "name": body.name.strip(), "status": "active"}
+    if invitation_token:
+        invitation_url = (
+            f"{str(request.base_url).rstrip('/')}/t/{quote(slug, safe='')}/login"
+            f"#invite={quote(invitation_token, safe='')}"
+        )
+        invitation = deliver_admin_invitation(email, body.name.strip(), invitation_url)
+    else:
+        invitation = {
+            "invitation_sent": False,
+            "invitation_message": "El administrador puede ingresar con la contraseña configurada.",
+        }
+    return {
+        "id": str(tenant_id),
+        "slug": slug,
+        "name": body.name.strip(),
+        "status": "active",
+        "menu_token": menu_token,
+        **invitation,
+    }
 
 
 @app.post("/api/superadmin/tenants/{slug}/admin")
@@ -1119,8 +1306,9 @@ def provision_tenant_admin(
             raise HTTPException(status_code=422, detail="Se requiere una contraseña para el administrador.")
         salt = secrets.token_bytes(32)
         password_digest = password_hash(body.password, salt)
+    invitation_token = None
     with connect_db() as connection:
-        connection.execute(
+        user = connection.execute(
             """
             INSERT INTO panapp_users
                 (user_id, panaderia_id, username, salt, password_hash, role)
@@ -1129,6 +1317,7 @@ def provision_tenant_admin(
             SET salt = COALESCE(EXCLUDED.salt, panapp_users.salt),
                 password_hash = COALESCE(EXCLUDED.password_hash, panapp_users.password_hash),
                 role = EXCLUDED.role
+            RETURNING user_id, auth_subject
             """,
             (
                 uuid.uuid4(),
@@ -1138,8 +1327,38 @@ def provision_tenant_admin(
                 password_digest,
                 ROLE_ADMIN,
             ),
-        )
-    return {"slug": tenant["slug"], "username": email}
+        ).fetchone()
+        if not user:
+            raise HTTPException(status_code=500, detail="No se pudo autorizar el administrador.")
+        if user[1] is None and NEON_AUTH_URL:
+            connection.execute(
+                """
+                UPDATE panapp_invitations SET used_at = NOW()
+                WHERE user_id = %s AND used_at IS NULL
+                """,
+                (user[0],),
+            )
+            invitation_token = create_admin_invitation(connection, user[0], uuid.UUID(tenant["id"]), email)
+    if invitation_token is None and not NEON_AUTH_URL:
+        return {
+            "slug": tenant["slug"],
+            "username": email,
+            "invitation_sent": False,
+            "invitation_message": "El administrador puede ingresar con la contraseña configurada.",
+        }
+    if invitation_token is None:
+        return {
+            "slug": tenant["slug"],
+            "username": email,
+            "invitation_sent": False,
+            "invitation_message": "El correo ya está vinculado a una cuenta. Puede ingresar con su contraseña actual o usar recuperación.",
+        }
+    invitation_url = f"{str(request.base_url).rstrip('/')}/t/{quote(tenant['slug'], safe='')}/login#invite={quote(invitation_token, safe='')}"
+    return {
+        "slug": tenant["slug"],
+        "username": email,
+        **deliver_admin_invitation(email, tenant["name"], invitation_url),
+    }
 
 
 @app.patch("/api/superadmin/tenants/{slug}/status")
@@ -1264,6 +1483,43 @@ def list_payments(slug: str, _: Annotated[dict, Depends(require_superadmin)]):
     ]
 
 
+@app.get("/api/superadmin/reports/subscription-revenue.csv")
+def subscription_revenue_report(
+    month: str,
+    _: Annotated[dict, Depends(require_superadmin)],
+):
+    try:
+        report_month = datetime.strptime(month, "%Y-%m")
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="El mes debe tener el formato AAAA-MM.") from error
+    if report_month.strftime("%Y-%m") != month:
+        raise HTTPException(status_code=422, detail="El mes debe tener el formato AAAA-MM.")
+    with connect_db() as connection:
+        rows = connection.execute(
+            """
+            SELECT tenant.name, tenant.slug, payment.amount, payment.reference,
+                   payment.paid_at AT TIME ZONE 'America/Bogota'
+            FROM panapp_payments payment
+            JOIN panapp_tenants tenant ON tenant.panaderia_id = payment.panaderia_id
+            WHERE payment.status = 'paid'
+              AND to_char(payment.paid_at AT TIME ZONE 'America/Bogota', 'YYYY-MM') = %s
+            ORDER BY payment.paid_at, tenant.name
+            """,
+            (month,),
+        ).fetchall()
+    report = io.StringIO(newline="")
+    report.write("\ufeff")
+    writer = csv.writer(report)
+    writer.writerow(("Fecha (America/Bogota)", "Panadería", "Slug", "Valor COP", "Referencia"))
+    for row in rows:
+        writer.writerow((row[4].strftime("%Y-%m-%d %H:%M:%S"), row[0], row[1], row[2], row[3]))
+    return Response(
+        content=report.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="panapp-ingresos-{month}.csv"'},
+    )
+
+
 @app.put("/api/superadmin/tenants/{slug}/subscription")
 def update_subscription(slug: str, body: SubscriptionUpdateBody, request: Request, _: Annotated[dict, Depends(require_superadmin)]):
     require_same_origin(request)
@@ -1319,8 +1575,47 @@ def tenant_admin_page(slug: str, request: Request):
 
 @app.get("/t/{slug}/menu")
 def tenant_menu_page(slug: str):
-    tenant_by_slug(slug)
+    tenant = tenant_by_slug(slug)
+    return RedirectResponse(f"/m/{quote(tenant['menu_token'], safe='')}", status_code=302)
+
+
+def tenant_menu_url(request: Request, menu_token: str) -> str:
+    return f"{str(request.base_url).rstrip('/')}/m/{quote(menu_token, safe='')}"
+
+
+@app.get("/m/{menu_token}")
+def public_menu_page(menu_token: str):
+    tenant_by_menu_token(menu_token)
     return asset("menu.html")
+
+
+@app.get("/m/{menu_token}/api/menu")
+def public_token_menu(menu_token: str):
+    tenant = tenant_by_menu_token(menu_token)
+    return public_catalog(tenant["id"])
+
+
+@app.get("/t/{slug}/menu/qr.svg")
+def tenant_menu_qr(slug: str, request: Request):
+    tenant = tenant_by_slug(slug)
+    menu_url = tenant_menu_url(request, tenant["menu_token"])
+    qr = qrcode.make(menu_url, image_factory=SvgPathImage)
+    output = io.BytesIO()
+    qr.save(output)
+    return Response(
+        content=output.getvalue(),
+        media_type="image/svg+xml",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Disposition": f'attachment; filename="{tenant["slug"]}-menu-qr.svg"',
+        },
+    )
+
+
+@app.get("/m/{menu_token}/qr.svg")
+def public_menu_qr(menu_token: str, request: Request):
+    tenant = tenant_by_menu_token(menu_token)
+    return tenant_menu_qr(tenant["slug"], request)
 
 
 @app.get("/t/{slug}/api/security/status")
@@ -1378,6 +1673,7 @@ def neon_tenant_login(
     email = claims.get("email")
     email_verified = claims.get("email_verified") is True
     requested_slug = validate_slug(slug) if slug else None
+    invitation_token = request.headers.get("x-panapp-invitation", "")
 
     with connect_db() as connection:
         subject_filter = ""
@@ -1444,6 +1740,32 @@ def neon_tenant_login(
                     detail="El correo ya está vinculado a otra identidad de Neon Auth. Contacta al superadministrador.",
                 )
             if user[5] is None:
+                invitation = connection.execute(
+                    """
+                    SELECT invitation_id, token_hash
+                    FROM panapp_invitations
+                    WHERE user_id = %s AND panaderia_id = %s AND email = %s
+                      AND used_at IS NULL AND expires_at > NOW()
+                    ORDER BY created_at DESC LIMIT 1
+                    """,
+                    (user[0], user[1], email.strip().lower()),
+                ).fetchone()
+                if invitation and not hmac.compare_digest(
+                    invitation[1],
+                    hash_token(invitation_token) if invitation_token else "",
+                ):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Abre el enlace de invitación que enviamos a tu correo para activar el acceso.",
+                    )
+                if invitation:
+                    connection.execute(
+                        """
+                        UPDATE panapp_invitations SET used_at = NOW()
+                        WHERE invitation_id = %s AND used_at IS NULL
+                        """,
+                        (invitation[0],),
+                    )
                 connection.execute(
                     "UPDATE panapp_users SET auth_subject = %s WHERE user_id = %s AND auth_subject IS NULL",
                     (subject, user[0]),
@@ -1466,6 +1788,56 @@ def neon_tenant_login(
         raise HTTPException(status_code=403, detail="Esta cuenta no tiene acceso al panel administrativo.")
     issue_session(response, request, "tenant", str(user[0]), user[3], tenant["id"])
     return {"ok": True, "username": user[2], "role": user[3], "tenant": tenant["slug"]}
+
+
+def verify_legacy_tenant_credentials(username: str, password: str, slug: str | None = None) -> bool:
+    email = username.strip().lower()
+    parameters: tuple = (email, ROLE_ADMIN)
+    tenant_filter = ""
+    if slug:
+        tenant_filter = "AND tenant.slug = %s"
+        parameters += (validate_slug(slug),)
+    with connect_db() as connection:
+        users = connection.execute(
+            f"""
+            SELECT users.salt, users.password_hash
+            FROM panapp_users users
+            JOIN panapp_tenants tenant ON tenant.panaderia_id = users.panaderia_id
+            WHERE users.username = %s AND users.role = %s
+              AND users.auth_subject IS NULL
+              AND users.salt IS NOT NULL AND users.password_hash IS NOT NULL
+              {tenant_filter}
+            ORDER BY tenant.slug
+            """,
+            parameters,
+        ).fetchall()
+    if len(users) != 1:
+        return False
+    salt, stored_hash = users[0]
+    return hmac.compare_digest(
+        password_hash(password, bytes.fromhex(salt)),
+        stored_hash,
+    )
+
+
+@app.post("/api/security/legacy-credentials")
+@app.post("/t/{slug}/api/security/legacy-credentials")
+def verify_legacy_tenant_login(
+    body: LoginBody,
+    request: Request,
+    slug: str | None = None,
+):
+    require_same_origin(request)
+    if not NEON_AUTH_URL:
+        raise HTTPException(status_code=404, detail="No hay credenciales antiguas por migrar.")
+    address = request.client.host if request.client else "unknown"
+    if not allow_login_attempt(address):
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Espera 15 minutos.")
+    if not verify_legacy_tenant_credentials(body.username, body.password, slug):
+        record_login_failure(address)
+        raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos.")
+    clear_login_failures(address)
+    return {"ok": True, "email": body.username.strip().lower()}
 
 
 @app.get("/api/security/status")
@@ -1635,6 +2007,12 @@ def create_public_order(slug: str, body: PublicOrderBody, request: Request):
     )
     whatsapp_url = f"https://wa.me/{phone}?text={quote(message)}" if 10 <= len(phone) <= 15 else None
     return {"order_id": str(order_id), "status": "received", "total": total, "whatsapp_url": whatsapp_url}
+
+
+@app.post("/m/{menu_token}/api/menu/orders")
+def create_public_token_order(menu_token: str, body: PublicOrderBody, request: Request):
+    tenant = tenant_by_menu_token(menu_token)
+    return create_public_order(tenant["slug"], body, request)
 
 
 @app.post("/t/{slug}/api/security/logout")

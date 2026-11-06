@@ -54,14 +54,14 @@
                 </div>
 
                 <form id="authForm" class="space-y-5" novalidate>
-                    <label class="block text-sm font-semibold text-slate-700" for="authEmail">
+                    <label id="authEmailField" class="block text-sm font-semibold text-slate-700" for="authEmail">
                         Correo electrónico
                         <span class="relative mt-2 block">
                             <i class="fa-regular fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true"></i>
                             <input id="authEmail" name="email" type="email" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="254" placeholder="tu@panaderia.com" class="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-4 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100">
                         </span>
                     </label>
-                    <label class="block text-sm font-semibold text-slate-700" for="authPassword">
+                    <label id="authPasswordField" class="block text-sm font-semibold text-slate-700" for="authPassword">
                         Contraseña
                         <span class="relative mt-2 block">
                             <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true"></i>
@@ -71,11 +71,26 @@
                             </button>
                         </span>
                     </label>
+                    <label id="authOtpField" class="hidden block text-sm font-semibold text-slate-700" for="authOtp">
+                        Código de verificación
+                        <input id="authOtp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3" placeholder="Código enviado a tu correo">
+                    </label>
+                    <button id="authResendVerification" type="button" class="hidden w-full text-center text-sm font-bold text-amber-800 underline underline-offset-4">Enviar otro código</button>
+                    <label id="authResetPasswordField" class="hidden block text-sm font-semibold text-slate-700" for="authResetPassword">
+                        Nueva contraseña
+                        <input id="authResetPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    </label>
+                    <label id="authResetConfirmField" class="hidden block text-sm font-semibold text-slate-700" for="authResetConfirm">
+                        Repite la nueva contraseña
+                        <input id="authResetConfirm" type="password" autocomplete="new-password" minlength="8" maxlength="128" class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    </label>
                     <p id="authError" class="hidden rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"></p>
                     <button id="authSubmit" type="submit" disabled class="w-full rounded-xl bg-slate-900 px-5 py-4 font-bold text-white shadow-lg transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-amber-200 disabled:cursor-not-allowed disabled:opacity-60">
                         Entrar al panel <i class="fa-solid fa-arrow-right ml-2" aria-hidden="true"></i>
                     </button>
+                    <button id="authForgotPassword" type="button" class="hidden w-full text-center text-sm font-bold text-amber-800 underline underline-offset-4">¿Olvidaste tu contraseña?</button>
                     <button id="authModeToggle" type="button" class="w-full text-center text-sm font-bold text-amber-800 underline underline-offset-4">¿Tu correo ya fue habilitado? Crea tu contraseña de Neon Auth</button>
+                    <button id="authBackToLogin" type="button" class="hidden w-full text-center text-sm font-bold text-amber-800 underline underline-offset-4">Volver a iniciar sesión</button>
                     <a id="adminSetupLink" href="/superadmin" class="hidden block text-center text-sm font-bold text-amber-800 underline underline-offset-4">Ir a Super Admin para habilitar el acceso</a>
                 </form>
 
@@ -84,8 +99,9 @@
                 </p>
             </div>
             <p class="mt-6 text-center text-sm text-slate-500">¿Buscas el menú de una panadería? <a href="/menu" class="font-bold text-amber-800 underline-offset-4 hover:underline">Abrir menú público</a></p>
+            <p class="mt-3 text-center text-xs text-slate-500"><a href="/cookies" class="underline underline-offset-2">Política de cookies</a></p>
         </section>
     </main>
-    <script type="module" src="auth.js?v=5"></script>
+    <script type="module" src="auth.js?v=7"></script>
 </body>
 </html>

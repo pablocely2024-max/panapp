@@ -24,6 +24,18 @@ function showMessage(element, message, isError = false) {
     element.classList.add(isError ? 'bg-red-50' : 'bg-emerald-50', isError ? 'text-red-800' : 'text-emerald-800');
 }
 
+function showInvitationResult(element, result, fallbackMessage) {
+    showMessage(element, result.invitation_message || fallbackMessage);
+    if (!result.invitation_url) return;
+    const link = document.createElement('a');
+    link.href = result.invitation_url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.className = 'mt-2 block break-all font-bold underline';
+    link.textContent = 'Abrir o copiar enlace de invitación';
+    element.append(document.createElement('br'), link);
+}
+
 function money(value) {
     return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(value) || 0);
 }
@@ -99,7 +111,7 @@ async function showPayments(tenant) {
         table.replaceChildren(...payments.map(payment => {
             const row = document.createElement('tr');
             row.append(
-                tableCell(new Date(payment.created_at).toLocaleDateString('es-CO')),
+                tableCell(new Date(payment.paid_at || payment.created_at).toLocaleString('es-CO')),
                 tableCell(money(payment.amount)),
                 tableCell(payment.status),
                 tableCell(payment.reference || '—')
@@ -116,6 +128,33 @@ async function showPayments(tenant) {
     }
 }
 
+async function downloadMonthlyReport() {
+    const month = document.getElementById('reportMonth').value;
+    const message = document.getElementById('reportMessage');
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+        showMessage(message, 'Selecciona el mes del informe.', true);
+        return;
+    }
+    try {
+        const response = await fetch(`/api/superadmin/reports/subscription-revenue.csv?month=${encodeURIComponent(month)}`, {
+            cache: 'no-store'
+        });
+        if (!response.ok) {
+            const result = await response.json();
+            throw new Error(result.detail || `Error HTTP ${response.status}`);
+        }
+        const file = URL.createObjectURL(await response.blob());
+        const link = document.createElement('a');
+        link.href = file;
+        link.download = `panapp-ingresos-${month}.csv`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(file), 1000);
+        showMessage(message, `Informe de ingresos de ${month} descargado.`);
+    } catch (error) {
+        showMessage(message, error.message || 'No se pudo descargar el informe.', true);
+    }
+}
+
 function configureTenantAdmin(tenant) {
     const form = document.getElementById('tenantAdminForm');
     form.dataset.slug = tenant.slug;
@@ -128,16 +167,31 @@ function createTenantRow(tenant) {
     const row = document.createElement('tr');
     const nameCell = document.createElement('td');
     nameCell.className = 'px-3 py-4';
+    const menuPath = tenant.menu_token
+        ? `/m/${encodeURIComponent(tenant.menu_token)}`
+        : `/t/${encodeURIComponent(tenant.slug)}/menu`;
+    const menuUrl = new URL(menuPath, window.location.origin);
     const name = document.createElement('a');
-    name.href = `/t/${encodeURIComponent(tenant.slug)}/menu`;
+    name.href = menuUrl.href;
     name.target = '_blank';
     name.rel = 'noopener noreferrer';
     name.className = 'font-bold text-slate-900 underline decoration-amber-400 underline-offset-4';
     name.textContent = tenant.name;
     const slug = document.createElement('span');
     slug.className = 'mt-1 block text-xs text-slate-500';
-    slug.textContent = `/t/${tenant.slug}`;
-    nameCell.append(name, slug);
+    slug.textContent = `Identificador interno: ${tenant.slug}`;
+    const menuLink = document.createElement('a');
+    menuLink.href = menuUrl.href;
+    menuLink.target = '_blank';
+    menuLink.rel = 'noopener noreferrer';
+    menuLink.className = 'mt-2 block max-w-sm break-all text-xs text-sky-800 underline';
+    menuLink.textContent = menuUrl.href;
+    const qrLink = document.createElement('a');
+    qrLink.href = `${menuPath}/qr.svg`;
+    qrLink.download = `${tenant.slug}-menu-qr.svg`;
+    qrLink.className = 'mt-1 inline-block text-xs font-bold text-amber-800 underline';
+    qrLink.textContent = 'Descargar QR del menú';
+    nameCell.append(name, slug, menuLink, qrLink);
     row.append(nameCell, tableCell(tenant.status), tableCell(tenant.plan_name || 'Sin plan'));
 
     const billingCell = document.createElement('td');
@@ -272,15 +326,38 @@ document.getElementById('loginForm').addEventListener('submit', async event => {
     }
 });
 
-document.getElementById('tenantForm').addEventListener('submit', async event => {
+const tenantForm = document.getElementById('tenantForm');
+const tenantNameInput = tenantForm.elements.namedItem('name');
+const tenantSlugInput = tenantForm.elements.namedItem('slug');
+let tenantSlugManuallyEdited = false;
+
+function slugFromName(name) {
+    return name.normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 63)
+        .replace(/-+$/g, '');
+}
+
+tenantNameInput.addEventListener('input', () => {
+    if (!tenantSlugManuallyEdited) tenantSlugInput.value = slugFromName(tenantNameInput.value);
+});
+tenantSlugInput.addEventListener('input', () => {
+    tenantSlugManuallyEdited = true;
+});
+
+tenantForm.addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget;
     const message = document.getElementById('tenantFormMessage');
     const values = Object.fromEntries(new FormData(form).entries());
     try {
-        await api('/api/superadmin/tenants', { method: 'POST', body: JSON.stringify(values) });
+        const result = await api('/api/superadmin/tenants', { method: 'POST', body: JSON.stringify(values) });
         form.reset();
-        showMessage(message, 'Panadería creada. El administrador debe registrarse con el correo autorizado y verificarlo en Neon Auth.');
+        tenantSlugManuallyEdited = false;
+        showInvitationResult(message, result, 'Panadería creada.');
         await refreshDashboard();
     } catch (error) {
         showMessage(message, error.message || 'No se pudo crear la panadería.', true);
@@ -299,13 +376,20 @@ document.getElementById('tenantAdminForm').addEventListener('submit', async even
                 username: document.getElementById('tenantAdminEmail').value.trim()
             })
         });
-        showMessage(message, `Correo autorizado. El administrador debe crear su cuenta y verificarla en /t/${result.slug}/login.`);
+        showInvitationResult(message, result, 'Correo autorizado.');
     } catch (error) {
         showMessage(message, error.message || 'No se pudo guardar el administrador.', true);
     }
 });
 
 document.getElementById('refreshButton').addEventListener('click', refreshDashboard);
+document.getElementById('downloadReportButton').addEventListener('click', downloadMonthlyReport);
+const reportDateParts = new Intl.DateTimeFormat('en', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit'
+}).formatToParts(new Date());
+document.getElementById('reportMonth').value = `${reportDateParts.find(part => part.type === 'year').value}-${reportDateParts.find(part => part.type === 'month').value}`;
 document.getElementById('logoutButton').addEventListener('click', async () => {
     try {
         await api('/api/superadmin/logout', { method: 'POST', body: '{}' });

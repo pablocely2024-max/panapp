@@ -18,7 +18,13 @@ from saas_app import (
     PublicOrderBody,
     TenantCreateBody,
     public_catalog,
+    resolve_public_hostname,
+    subscription_revenue_report,
+    tenant_menu_qr,
+    tenant_menu_url,
     validate_slug,
+    hash_token,
+    verify_legacy_tenant_credentials,
     neon_tenant_login,
     verify_neon_access_token,
 )
@@ -38,6 +44,61 @@ class SlugValidationTests(unittest.TestCase):
         for slug in ("", "-panaderia", "mi_panaderia", "panaderia-"):
             with self.subTest(slug=slug), self.assertRaises(HTTPException):
                 validate_slug(slug)
+
+
+class PublicMenuUrlTests(unittest.TestCase):
+    def test_uses_render_external_url_when_hostname_is_not_set(self):
+        self.assertEqual(
+            resolve_public_hostname("", "", "https://panapp.onrender.com"),
+            "panapp.onrender.com",
+        )
+        self.assertEqual(
+            resolve_public_hostname("  ", "panapp.onrender.com", ""),
+            "panapp.onrender.com",
+        )
+
+    def test_configured_domain_takes_precedence(self):
+        self.assertEqual(
+            resolve_public_hostname("menus.example.com", "panapp.onrender.com", ""),
+            "menus.example.com",
+        )
+
+    def test_menu_url_contains_the_random_token_and_public_origin(self):
+        request = Request({
+            "type": "http",
+            "method": "GET",
+            "path": "/t/panaderia-central/menu",
+            "headers": [(b"host", b"panapp.onrender.com")],
+            "scheme": "https",
+            "server": ("panapp.onrender.com", 443),
+            "client": ("127.0.0.1", 1234),
+            "query_string": b"",
+        })
+
+        self.assertEqual(
+            tenant_menu_url(request, "a-random-menu-token-123"),
+            "https://panapp.onrender.com/m/a-random-menu-token-123",
+        )
+
+    @patch("saas_app.tenant_by_slug", return_value={"slug": "panaderia-central", "menu_token": "a-random-menu-token-123"})
+    def test_menu_qr_route_returns_an_svg_download(self, tenant_by_slug):
+        request = Request({
+            "type": "http",
+            "method": "GET",
+            "path": "/t/panaderia-central/menu/qr.svg",
+            "headers": [(b"host", b"panapp.onrender.com")],
+            "scheme": "https",
+            "server": ("panapp.onrender.com", 443),
+            "client": ("127.0.0.1", 1234),
+            "query_string": b"",
+        })
+
+        response = tenant_menu_qr("panaderia-central", request)
+
+        self.assertEqual(response.media_type, "image/svg+xml")
+        self.assertIn("panaderia-central-menu-qr.svg", response.headers["content-disposition"])
+        self.assertIn(b"<svg", response.body)
+        tenant_by_slug.assert_called_once_with("panaderia-central")
 
 
 class RequestValidationTests(unittest.TestCase):
@@ -243,6 +304,7 @@ class NeonTenantLoginTests(unittest.TestCase):
         connection.execute.side_effect = [
             MagicMock(fetchall=MagicMock(return_value=[])),
             MagicMock(fetchall=MagicMock(return_value=[(*user, None)])),
+            MagicMock(fetchone=MagicMock(return_value=None)),
             MagicMock(),
             MagicMock(fetchone=MagicMock(return_value=user)),
         ]
@@ -264,8 +326,126 @@ class NeonTenantLoginTests(unittest.TestCase):
 
         self.assertEqual(result["tenant"], "panaderia-central")
         self.assertEqual(result["username"], "admin@example.test")
-        self.assertEqual(connection.execute.call_args_list[2].args[1], ("neon-user-id", user_id))
+        self.assertEqual(connection.execute.call_args_list[3].args[1], ("neon-user-id", user_id))
         issue_session.assert_called_once()
+
+    def test_requires_and_consumes_pending_invitation(self):
+        user_id, tenant_id, invitation_id = uuid4(), uuid4(), uuid4()
+        user = (user_id, tenant_id, "admin@example.test", "ADMIN_PANADERIA", "panaderia-central")
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.side_effect = [
+            MagicMock(fetchall=MagicMock(return_value=[])),
+            MagicMock(fetchall=MagicMock(return_value=[(*user, None)])),
+            MagicMock(fetchone=MagicMock(return_value=(invitation_id, hash_token("invite-token")))),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(fetchone=MagicMock(return_value=user)),
+        ]
+        request = self.request()
+        request.scope["headers"].append((b"x-panapp-invitation", b"invite-token"))
+        with (
+            patch("saas_app.connect_db", return_value=connection),
+            patch(
+                "saas_app.verify_neon_access_token",
+                return_value={
+                    "sub": "neon-user-id",
+                    "email": "admin@example.test",
+                    "email_verified": True,
+                },
+            ),
+            patch("saas_app.tenant_by_slug", return_value={"id": str(tenant_id), "slug": "panaderia-central"}),
+            patch("saas_app.issue_session") as issue_session,
+        ):
+            result = neon_tenant_login(request, Response(), slug="panaderia-central")
+
+        self.assertEqual(result["tenant"], "panaderia-central")
+        self.assertEqual(connection.execute.call_args_list[3].args[1], (invitation_id,))
+        issue_session.assert_called_once()
+
+    def test_rejects_missing_invitation_token(self):
+        user_id, tenant_id, invitation_id = uuid4(), uuid4(), uuid4()
+        user = (user_id, tenant_id, "admin@example.test", "ADMIN_PANADERIA", "panaderia-central")
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.side_effect = [
+            MagicMock(fetchall=MagicMock(return_value=[])),
+            MagicMock(fetchall=MagicMock(return_value=[(*user, None)])),
+            MagicMock(fetchone=MagicMock(return_value=(invitation_id, hash_token("invite-token")))),
+        ]
+        with (
+            patch("saas_app.connect_db", return_value=connection),
+            patch(
+                "saas_app.verify_neon_access_token",
+                return_value={
+                    "sub": "neon-user-id",
+                    "email": "admin@example.test",
+                    "email_verified": True,
+                },
+            ),
+        ):
+            with self.assertRaises(HTTPException) as error:
+                neon_tenant_login(self.request(), Response(), slug="panaderia-central")
+
+        self.assertEqual(error.exception.status_code, 403)
+        self.assertEqual(connection.execute.call_count, 3)
+
+
+class LegacyPasswordMigrationTests(unittest.TestCase):
+    @patch("saas_app.connect_db")
+    def test_accepts_a_matching_legacy_password(self, connect_db):
+        import secrets
+        from saas_app import password_hash
+
+        salt = secrets.token_bytes(32)
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchall.return_value = [
+            (salt.hex(), password_hash("previous-password", salt))
+        ]
+        connect_db.return_value = connection
+
+        self.assertTrue(verify_legacy_tenant_credentials("Admin@example.test", "previous-password"))
+
+    @patch("saas_app.connect_db")
+    def test_rejects_ambiguous_or_mismatched_legacy_credentials(self, connect_db):
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchall.return_value = [
+            ("00" * 32, "not-the-password"),
+            ("11" * 32, "not-the-password"),
+        ]
+        connect_db.return_value = connection
+
+        self.assertFalse(verify_legacy_tenant_credentials("admin@example.test", "previous-password"))
+
+
+class SubscriptionReportTests(unittest.TestCase):
+    @patch("saas_app.connect_db")
+    def test_exports_paid_revenue_for_the_selected_month(self, connect_db):
+        from datetime import datetime
+        from decimal import Decimal
+
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchall.return_value = [
+            ("Panadería Central", "central", Decimal("45000.00"), "TX-123", datetime(2025, 2, 4, 10, 30))
+        ]
+        connect_db.return_value = connection
+
+        response = subscription_revenue_report("2025-02", {})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('filename="panapp-ingresos-2025-02.csv"', response.headers["content-disposition"])
+        self.assertIn("Panadería Central", response.body.decode("utf-8-sig"))
+        self.assertIn("TX-123", response.body.decode("utf-8-sig"))
+        self.assertEqual(connection.execute.call_args.args[1], ("2025-02",))
+
+    def test_rejects_invalid_report_month(self):
+        with self.assertRaises(HTTPException) as error:
+            subscription_revenue_report("2025-13", {})
+
+        self.assertEqual(error.exception.status_code, 422)
 
 
 if __name__ == "__main__":
