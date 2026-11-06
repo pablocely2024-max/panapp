@@ -131,6 +131,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 TENANT_SESSION_COOKIE = "panapp_tenant_session"
 SUPERADMIN_SESSION_COOKIE = "panapp_superadmin_session"
 SESSION_TTL_HOURS = 8
+SESSION_IDLE_TIMEOUT_MINUTES = 5
+DEFAULT_PANAPP_EMAIL = "panappanaderias@gmail.com"
 PASSWORD_ITERATIONS = 480_000
 NEON_DNS_ATTEMPTS = 5
 NEON_DNS_RETRY_BASE_SECONDS = 0.25
@@ -456,6 +458,9 @@ def initialize_database() -> None:
             """
         )
         connection.execute(
+            "ALTER TABLE panapp_sessions ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+        )
+        connection.execute(
             """
             CREATE TABLE IF NOT EXISTS panapp_state (
                 panaderia_id UUID NOT NULL REFERENCES panapp_tenants(panaderia_id),
@@ -746,17 +751,25 @@ def current_session(request: Request) -> dict | None:
     with connect_db() as connection:
         row = connection.execute(
             """
-            SELECT session.principal_type, session.principal_id, session.panaderia_id,
-                   session.role, session.expires_at,
-                   COALESCE(
-                       (SELECT username FROM panapp_users WHERE user_id = session.principal_id),
-                       (SELECT username FROM panapp_superadmins WHERE superadmin_id = session.principal_id)
-                   )
-            FROM panapp_sessions session
-            WHERE session.token_hash = %s AND session.expires_at > NOW()
+            UPDATE panapp_sessions
+            SET last_activity_at = NOW()
+            WHERE token_hash = %s
+              AND expires_at > NOW()
+              AND last_activity_at > NOW() - (%s * INTERVAL '1 minute')
+            RETURNING principal_type, principal_id, panaderia_id, role
             """,
-            (hash_token(token),),
+            (hash_token(token), SESSION_IDLE_TIMEOUT_MINUTES),
         ).fetchone()
+        if row:
+            username_row = connection.execute(
+                """
+                SELECT username FROM panapp_users WHERE user_id = %s
+                UNION ALL
+                SELECT username FROM panapp_superadmins WHERE superadmin_id = %s
+                LIMIT 1
+                """,
+                (row[1], row[1]),
+            ).fetchone()
     if not row:
         return None
     return {
@@ -764,7 +777,7 @@ def current_session(request: Request) -> dict | None:
         "principal_id": str(row[1]),
         "panaderia_id": str(row[2]) if row[2] else None,
         "role": row[3],
-        "username": row[5],
+        "username": username_row[0] if username_row else None,
     }
 
 
@@ -793,8 +806,9 @@ def issue_session(response: Response, request: Request, principal_type: str, pri
         connection.execute(
             """
             INSERT INTO panapp_sessions
-                (token_hash, principal_type, principal_id, panaderia_id, role, expires_at)
+                (token_hash, principal_type, principal_id, panaderia_id, role, expires_at, last_activity_at)
             VALUES (%s, %s, %s, %s, %s, NOW() + (%s * INTERVAL '1 hour'))
+            ON CONFLICT (token_hash) DO NOTHING
             """,
             (
                 hash_token(token),
@@ -830,15 +844,16 @@ def create_admin_invitation(connection, user_id: uuid.UUID, tenant_id: uuid.UUID
 
 
 def send_smtp_email(email: str, subject: str, content: str) -> bool:
-    host = os.environ.get("PANAPP_SMTP_HOST", "").strip()
-    username = os.environ.get("PANAPP_SMTP_USER", "").strip()
+    host = os.environ.get("PANAPP_SMTP_HOST", "smtp.gmail.com").strip()
+    username = os.environ.get("PANAPP_SMTP_USER", DEFAULT_PANAPP_EMAIL).strip()
     password = os.environ.get("PANAPP_SMTP_PASSWORD", "")
-    sender = os.environ.get("PANAPP_SMTP_FROM", "").strip()
+    sender = os.environ.get("PANAPP_SMTP_FROM", username).strip()
     if not all((host, username, password, sender)):
         return False
 
     port = read_port_setting("PANAPP_SMTP_PORT", "587")
     use_ssl = os.environ.get("PANAPP_SMTP_USE_SSL", "").strip().lower() in {"1", "true", "yes"}
+    timeout = 8
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = sender
@@ -846,16 +861,19 @@ def send_smtp_email(email: str, subject: str, content: str) -> bool:
     message.set_content(content)
 
     if use_ssl:
-        with smtplib.SMTP_SSL(host, port, timeout=15) as server:
+        with smtplib.SMTP_SSL(host, port, timeout=timeout) as server:
             server.login(username, password)
-            server.send_message(message)
+            refused = server.send_message(message)
     else:
-        with smtplib.SMTP(host, port, timeout=15) as server:
+        with smtplib.SMTP(host, port, timeout=timeout) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
             server.login(username, password)
-            server.send_message(message)
+            refused = server.send_message(message)
+    if refused:
+        raise smtplib.SMTPRecipientsRefused(refused)
+    logging.info("SMTP aceptó el mensaje de PANAPP para su entrega.")
     return True
 
 
@@ -967,7 +985,11 @@ def public_catalog(tenant_id: str, tenant_name: str = "") -> dict:
     return {
         "revision": state["revision"],
         "business": {
-            key: public_text(profile.get(key, "")) or (tenant_name if key == "nombre" else "")
+            key: (
+                tenant_name
+                if key == "nombre" and public_text(profile.get(key, "")).strip().casefold() == "panadería panapp"
+                else public_text(profile.get(key, "")) or (tenant_name if key == "nombre" else "")
+            )
             for key in ("nombre", "tipo", "eslogan", "descripcion", "direccion", "ciudad", "horario", "telefono", "email", "moneda")
         },
         "whatsapp": public_text(configuration.get("whatsapp", "")),
