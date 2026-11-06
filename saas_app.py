@@ -749,16 +749,19 @@ def current_session(request: Request) -> dict | None:
     if not token:
         return None
     with connect_db() as connection:
+        touch_activity = not (
+            request.method == "GET" and request.url.path.endswith("/api/state")
+        )
         row = connection.execute(
             """
             UPDATE panapp_sessions
-            SET last_activity_at = NOW()
+            SET last_activity_at = CASE WHEN %s THEN NOW() ELSE last_activity_at END
             WHERE token_hash = %s
               AND expires_at > NOW()
               AND last_activity_at > NOW() - (%s * INTERVAL '1 minute')
             RETURNING principal_type, principal_id, panaderia_id, role
             """,
-            (hash_token(token), SESSION_IDLE_TIMEOUT_MINUTES),
+            (touch_activity, hash_token(token), SESSION_IDLE_TIMEOUT_MINUTES),
         ).fetchone()
         if row:
             username_row = connection.execute(
@@ -1171,6 +1174,12 @@ def superadmin_logout(request: Request, response: Response):
         with connect_db() as connection:
             connection.execute("DELETE FROM panapp_sessions WHERE token_hash = %s", (hash_token(token),))
     response.delete_cookie(SUPERADMIN_SESSION_COOKIE, path="/", httponly=True, samesite="strict")
+    return {"ok": True}
+
+
+@app.post("/api/superadmin/activity")
+def superadmin_activity(request: Request, _: Annotated[dict, Depends(require_superadmin)]):
+    require_same_origin(request)
     return {"ok": True}
 
 
@@ -2373,6 +2382,14 @@ def tenant_logout(slug: str, request: Request, response: Response):
             with connect_db() as connection:
                 connection.execute("DELETE FROM panapp_sessions WHERE token_hash = %s", (hash_token(token),))
     response.delete_cookie(TENANT_SESSION_COOKIE, path="/", httponly=True, samesite="strict")
+    return {"ok": True}
+
+
+@app.post("/t/{slug}/api/security/activity")
+def tenant_activity(slug: str, request: Request):
+    require_same_origin(request)
+    tenant = tenant_by_slug(slug)
+    require_tenant_admin(request, tenant["id"])
     return {"ok": True}
 
 
