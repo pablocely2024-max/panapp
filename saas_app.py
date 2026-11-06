@@ -847,7 +847,7 @@ def send_smtp_email(email: str, subject: str, content: str) -> bool:
     username = os.environ.get("PANAPP_SMTP_USER", DEFAULT_PANAPP_EMAIL).strip()
     password = os.environ.get("PANAPP_SMTP_PASSWORD", "")
     sender = os.environ.get("PANAPP_SMTP_FROM", username).strip()
-    if not all((host, username, password, sender)):
+    if not password or not all((host, username, sender)):
         return False
 
     port = read_port_setting("PANAPP_SMTP_PORT", "587")
@@ -1436,6 +1436,33 @@ def provision_tenant_admin(
     }
 
 
+@app.post("/api/superadmin/tenants/{slug}/admin/recovery-code")
+def send_tenant_admin_recovery_code(
+    slug: str,
+    body: EmailCodeRequestBody,
+    request: Request,
+    _: Annotated[dict, Depends(require_superadmin)],
+):
+    require_same_origin(request)
+    tenant = tenant_by_slug(slug, must_be_active=False)
+    email = body.username.strip().lower()
+    with connect_db() as connection:
+        user = connection.execute(
+            """
+            SELECT 1 FROM panapp_users
+            WHERE panaderia_id = %s AND username = %s AND role = %s
+            """,
+            (uuid.UUID(tenant["id"]), email, ROLE_ADMIN),
+        ).fetchone()
+    if not user:
+        raise HTTPException(status_code=404, detail="Ese correo no está autorizado para esta panadería.")
+    return request_tenant_email_code(
+        EmailCodeRequestBody(username=email),
+        request,
+        slug,
+    )
+
+
 @app.patch("/api/superadmin/tenants/{slug}/status")
 def update_tenant_status(slug: str, body: TenantStatusBody, request: Request, _: Annotated[dict, Depends(require_superadmin)]):
     require_same_origin(request)
@@ -1964,7 +1991,10 @@ def request_tenant_email_code(body: EmailCodeRequestBody, request: Request, slug
             parameters,
         ).fetchall()
         if len(users) != 1:
-            return {"ok": True, "message": "Si el correo está autorizado, recibirás un código de verificación."}
+            return {
+                "ok": True,
+                "message": "El servidor de correo aceptó el código. Revisa Recibidos y Spam; la entrega puede tardar unos minutos.",
+            }
 
         user_id, tenant_id, tenant_name = users[0]
         request_limits = connection.execute(
