@@ -3,6 +3,8 @@ const loginPanel = document.getElementById('loginPanel');
 const dashboardPanel = document.getElementById('dashboardPanel');
 const tenantTable = document.getElementById('tenantTable');
 let availablePlans = [];
+let inactivityTimer = null;
+const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 
 async function api(path, options = {}) {
     const response = await fetch(path, {
@@ -22,6 +24,36 @@ function showMessage(element, message, isError = false) {
     element.textContent = message;
     element.classList.remove('hidden', 'bg-red-50', 'text-red-800', 'bg-emerald-50', 'text-emerald-800');
     element.classList.add(isError ? 'bg-red-50' : 'bg-emerald-50', isError ? 'text-red-800' : 'text-emerald-800');
+}
+
+function startInactivityTimeout() {
+    let lastActivitySignal = 0;
+    const recordActivity = () => {
+        window.clearTimeout(inactivityTimer);
+        inactivityTimer = window.setTimeout(async () => {
+            try {
+                await api('/api/superadmin/logout', { method: 'POST', body: '{}' });
+            } catch (error) {
+                console.warn('No se pudo revocar la sesión al vencer por inactividad.', error);
+            }
+            window.location.replace('/superadmin?session=expired');
+        }, INACTIVITY_TIMEOUT_MS);
+
+        const now = Date.now();
+        if (now - lastActivitySignal < 30000) return;
+        lastActivitySignal = now;
+        fetch('/api/superadmin/activity', { method: 'POST' })
+            .then(response => {
+                if (response.status === 401) window.location.replace('/superadmin?session=expired');
+                else if (!response.ok) console.error('No se pudo renovar la actividad de la sesión.');
+            })
+            .catch(error => console.error('No se pudo renovar la actividad de la sesión.', error));
+    };
+
+    ['pointerdown', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach(eventName => {
+        document.addEventListener(eventName, recordActivity, { passive: true });
+    });
+    recordActivity();
 }
 
 function showInvitationResult(element, result, fallbackMessage) {
@@ -290,6 +322,7 @@ async function showDashboard() {
     loginPanel.classList.add('hidden');
     dashboardPanel.classList.remove('hidden');
     document.getElementById('logoutButton').classList.remove('hidden');
+    startInactivityTimeout();
     try {
         await loadPlans();
         await refreshDashboard();
@@ -407,4 +440,7 @@ document.getElementById('closePaymentsDialog').addEventListener('click', () => {
     });
 });
 
+if (new URLSearchParams(window.location.search).get('session') === 'expired') {
+    showMessage(document.getElementById('loginError'), 'La sesión se cerró después de cinco minutos sin actividad.', true);
+}
 checkSession();

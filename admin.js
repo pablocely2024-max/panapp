@@ -105,6 +105,42 @@ let escriturasPendientes = 0;
 let colaEscrituraServidor = Promise.resolve();
 let sincronizandoServidor = false;
 let intervaloSincronizacion = null;
+let temporizadorInactividad = null;
+const TIEMPO_INACTIVIDAD_MS = 5 * 60 * 1000;
+
+function registrarActividadAdmin() {
+    let ultimaSenal = 0;
+    const registrar = () => {
+        window.clearTimeout(temporizadorInactividad);
+        temporizadorInactividad = window.setTimeout(async () => {
+            try {
+                await fetch(tenantPath('/api/security/logout'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}'
+                });
+            } catch (error) {
+                console.warn('No se pudo revocar la sesión al vencer por inactividad.', error);
+            }
+            window.location.replace(tenantPath('/login'));
+        }, TIEMPO_INACTIVIDAD_MS);
+
+        const now = Date.now();
+        if (now - ultimaSenal < 30000) return;
+        ultimaSenal = now;
+        fetch(tenantPath('/api/security/activity'), { method: 'POST' })
+            .then(response => {
+                if (response.status === 401) window.location.replace(tenantPath('/login'));
+                else if (!response.ok) console.error('No se pudo renovar la actividad de la sesión.');
+            })
+            .catch(error => console.error('No se pudo renovar la actividad de la sesión.', error));
+    };
+
+    ['pointerdown', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach(eventName => {
+        document.addEventListener(eventName, registrar, { passive: true });
+    });
+    registrar();
+}
 
 function cargarDatos() {
     try {
@@ -526,7 +562,7 @@ async function actualizarResumenSeguridad() {
         const response = await fetch(tenantPath('/api/security/status'), { cache: 'no-store' });
         const status = await response.json();
         resumen.textContent = status.authenticated
-            ? `Sesión protegida activa${status.username ? ` para ${status.username}` : ''}. La sesión se cierra al reiniciar el servidor o después de ocho horas.`
+            ? `Sesión protegida activa${status.username ? ` para ${status.username}` : ''}. Se cierra tras cinco minutos de inactividad.`
             : 'No hay una sesión administradora activa en este navegador.';
     } catch {
         resumen.textContent = 'No se pudo consultar el estado de la sesión.';
@@ -539,6 +575,7 @@ async function inicializarApp() {
     iniciarGrafica();
     actualizarEstadoServidor(servidorLocalActivo() ? 'Conectando a PostgreSQL…' : 'Solo almacenamiento de este navegador', false);
     await sincronizarDesdeServidor(true);
+    if (servidorLocalActivo()) registrarActividadAdmin();
     if (servidorLocalActivo() && !intervaloSincronizacion) {
         intervaloSincronizacion = window.setInterval(() => sincronizarDesdeServidor(), 2000);
     }
