@@ -2051,10 +2051,7 @@ def request_tenant_email_code(body: EmailCodeRequestBody, request: Request, slug
             parameters,
         ).fetchall()
         if len(users) != 1:
-            return {
-                "ok": True,
-                "message": "El servidor de correo aceptó el código. Revisa Recibidos y Spam; la entrega puede tardar unos minutos.",
-            }
+            return {"ok": True, "message": "Si el correo está autorizado, recibirás un código de verificación."}
 
         user_id, tenant_id, tenant_name = users[0]
         request_limits = connection.execute(
@@ -2115,9 +2112,12 @@ def request_tenant_email_code(body: EmailCodeRequestBody, request: Request, slug
             ) from send_error
         raise HTTPException(
             status_code=503,
-            detail="El correo SMTP no está configurado. Configura PANAPP_SMTP_HOST, PANAPP_SMTP_USER, PANAPP_SMTP_PASSWORD y PANAPP_SMTP_FROM.",
+            detail="No está configurada PANAPP_SMTP_PASSWORD. Añade en Render una contraseña de aplicación de Google para la cuenta emisora.",
         )
-    return {"ok": True, "message": "Si el correo está autorizado, recibirás un código de verificación."}
+    return {
+        "ok": True,
+        "message": "Gmail aceptó el mensaje para entrega. Revisa Recibidos y Spam; puede tardar unos minutos.",
+    }
 
 
 @app.post("/api/security/email-code")
