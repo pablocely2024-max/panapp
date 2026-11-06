@@ -91,39 +91,15 @@ def main():
     request("POST", f"{tenant}/api/security/logout", {})
 
     if os.environ.get("PANAPP_SMOKE_MUTATIONS") == "1":
-        if not all((MUTATION_EMAIL, MUTATION_PASSWORD)):
-            raise SystemExit(
-                "Set PANAPP_SMOKE_MUTATION_EMAIL and PANAPP_SMOKE_MUTATION_PASSWORD "
-                "to a verified Neon Auth account not already linked to another PANAPP user."
-            )
         smoke_slug = f"smoke-{time.time_ns()}"
         request("POST", "/api/superadmin/tenants", {
             "slug": smoke_slug,
             "name": "PANAPP HTTP smoke tenant",
-            "owner_email": MUTATION_EMAIL,
+            "owner_email": TENANT_EMAIL,
             "plan": "starter",
             "billing_period": "monthly",
         })
         smoke_tenant = f"/t/{smoke_slug}"
-        mutation_token = neon_auth_token(MUTATION_EMAIL, MUTATION_PASSWORD)
-        request("POST", f"{smoke_tenant}/api/security/neon/session", {}, auth_token=mutation_token)
-        request("PUT", f"{smoke_tenant}/api/state", {
-            "data": {
-                "perfilEmpresa": {"nombre": "Smoke tenant", "moneda": "COP"},
-                "configuracionMenu": {"whatsapp": ""},
-                "productos": [{"id": 1, "nombre": "Pan de prueba", "precio": 2000, "categoria": "Panes", "stock": 10}],
-                "insumos": [],
-                "proveedores": [],
-                "encargos": [],
-                "ventas": [],
-                "mermas": [],
-            }
-        })
-        request("POST", f"{smoke_tenant}/api/menu/orders", {
-            "customer_name": "Prueba PANAPP",
-            "order_type": "pickup",
-            "items": [{"product_id": 1, "quantity": 1}],
-        })
         request("PUT", f"/api/superadmin/tenants/{smoke_slug}/subscription", {
             "plan": "business",
             "billing_period": "annual",

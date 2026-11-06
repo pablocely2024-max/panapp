@@ -196,7 +196,6 @@ Start PANAPP and configure credentials for an existing active tenant in the same
 $env:PANAPP_SMOKE_TENANT_SLUG = 'panaderia-principal'
 $env:PANAPP_SMOKE_TENANT_EMAIL = 'admin@example.com'
 $env:PANAPP_SMOKE_TENANT_PASSWORD = '<tenant password>'
-$env:PANAPP_NEON_AUTH_URL = 'https://ep-lucky-lake-b8de2v7l.neonauth.c-14.us-east-1.aws.neon.tech/neondb/auth'
 $env:PANAPP_SUPERADMIN_EMAIL = 'owner@example.com'
 $env:PANAPP_SUPERADMIN_PASSWORD = '<owner password>'
 .\.venv-neon\Scripts\python.exe .\tests\http_smoke.py
@@ -204,10 +203,8 @@ $env:PANAPP_SUPERADMIN_PASSWORD = '<owner password>'
 
 The script sends real HTTP requests and checks HTTP 200 on health, portal pages, authentication, plans, metrics, tenant catalog, and the authenticated tenant dashboard/state endpoints. By default it does not change subscription or bakery records. Configure `PANAPP_SMOKE_BASE_URL` when the service is not on localhost.
 
-The tenant smoke account must already exist in Neon Auth, have a verified email, and be authorized in that tenant by Super Admin. Mutation smoke tests create and later suspend/cancel a temporary tenant; they additionally require a separately verified Neon Auth identity that is not already linked to another PANAPP user:
+The tenant smoke account must have an existing PANAPP password and be authorized in that tenant by Super Admin. Mutation smoke tests create and later suspend/cancel a temporary tenant and register a test payment. They require a Super Admin login, but do not require a separate Neon Auth identity:
 
 ```powershell
 $env:PANAPP_SMOKE_MUTATIONS = '1'
-$env:PANAPP_SMOKE_MUTATION_EMAIL = 'smoke-admin@example.com'
-$env:PANAPP_SMOKE_MUTATION_PASSWORD = '<verified Neon Auth password>'
 ```

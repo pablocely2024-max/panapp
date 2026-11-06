@@ -149,13 +149,13 @@
                 <div><p class="text-xs font-bold uppercase tracking-[.18em] text-amber-700">Acceso de panadería</p><h2 id="tenantAdminTitle" class="mt-2 font-display text-2xl text-slate-900">Administrador</h2></div>
                 <button id="closeTenantAdminDialog" type="button" class="rounded-full px-3 py-2 text-slate-500 hover:bg-slate-100" aria-label="Cerrar configuración">✕</button>
             </div>
-            <p class="mt-3 text-sm leading-6 text-slate-600">Autoriza un correo para esta panadería. Su propietario creará la contraseña con Neon Auth; el acceso se habilita al verificar ese correo.</p>
+            <p class="mt-3 text-sm leading-6 text-slate-600">Autoriza el correo del administrador. Para crear o recuperar su contraseña, recibirá un código de un solo uso en ese correo.</p>
             <p id="tenantAdminMessage" class="hidden mt-4 rounded-xl px-4 py-3 text-sm" role="status"></p>
             <form id="tenantAdminForm" class="mt-5 space-y-4">
                 <label class="block text-sm font-semibold">Correo del administrador
                     <input id="tenantAdminEmail" type="email" required minlength="3" maxlength="254" autocomplete="username" class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 </label>
-                <p class="text-xs leading-5 text-slate-500">Solo una cuenta Neon Auth con correo verificado podrá usar este acceso. No se modifican cuentas de otras panaderías.</p>
+                <p class="text-xs leading-5 text-slate-500">Solo el correo autorizado para esta panadería podrá iniciar sesión. No se modifican cuentas de otras panaderías.</p>
                 <div class="flex flex-wrap justify-end gap-3">
                     <button id="cancelTenantAdminDialog" type="button" class="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancelar</button>
                     <button class="rounded-xl bg-amber-700 px-5 py-3 text-sm font-bold text-white hover:bg-amber-800">Guardar administrador</button>
