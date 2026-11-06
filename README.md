@@ -72,30 +72,24 @@ The database user needs permission to create and migrate tables. PANAPP creates 
 
 The migration preserves the existing `panapp_state` and the existing administrator credentials by assigning them to `PANAPP_LEGACY_TENANT_SLUG` (default `panaderia-principal`). It does not erase the old security table. Back up Neon before deploying schema changes.
 
-### Neon Auth and the app database
+### Email verification and the app database
 
-The PostgreSQL connection string and the Neon Auth HTTPS endpoint are different services. Keep the PostgreSQL connection string in the ignored `.env.local` file as `DATABASE_URL`; do not use a `neonauth` URL as `DATABASE_URL`. Configure the public Neon Auth URL separately:
+PANAPP bakery-admin access uses its own backend authentication and does not call Neon Auth from the browser. The prior Neon Auth `Invalid origin` rejection therefore does not block the email-code flow. Neon PostgreSQL remains the app database; keep its connection string in the ignored `.env.local` file as `DATABASE_URL`.
+
+Super Admin authorizes the bakery email in `panapp_users`. On first access or password recovery, the administrator requests a six-digit, one-time code. PANAPP sends it only to that already-authorized address through the app's SMTP settings. The code expires after 10 minutes, can be attempted at most five times, and is stored hashed in PostgreSQL. After verification, the administrator chooses their own password (12–128 characters); PANAPP stores a PBKDF2-HMAC-SHA256 hash and issues its existing `HttpOnly` session cookie. PANAPP never emails passwords.
+
+SMTP is required for verification and recovery codes. Configure these server-side deployment variables:
 
 ```text
-PANAPP_NEON_AUTH_URL=https://ep-lucky-lake-b8de2v7l.neonauth.c-14.us-east-1.aws.neon.tech/neondb/auth
-PANAPP_NEON_AUTH_ISSUER=https://ep-lucky-lake-b8de2v7l.neonauth.c-14.us-east-1.aws.neon.tech/neondb/auth
-PANAPP_NEON_AUTH_AUDIENCE=authenticated
+PANAPP_SMTP_HOST
+PANAPP_SMTP_PORT=587
+PANAPP_SMTP_USER
+PANAPP_SMTP_PASSWORD
+PANAPP_SMTP_FROM
+PANAPP_SMTP_USE_SSL=false
 ```
 
-The app validates Neon Auth's EdDSA-signed JWT with the endpoint's JWKS at `/.well-known/jwks.json`, and verifies its issuer, audience, and expiration. Override the issuer or audience only with the exact values configured by Neon Auth. Add the app's local and deployed HTTPS origins to the allowed origins in Neon Auth, and require email verification. For the Render service, the exact production origin is `https://panapp-92vz.onrender.com` (no trailing slash or path). An `Invalid origin` response is returned by Neon Auth before PANAPP can create an account, send a code, or validate a password; add the origin in Neon Auth's allowed-origin settings and retry.
-
-For email verification codes and password-reset links, open Neon Console → **Settings → Better Auth** and enable email/password sign-up, **Verify at Sign-up**, and the verification-code method. Configure a dedicated SMTP provider for production email delivery. Enable **Revoke sessions on password reset**. After Super Admin authorizes the address, the administrator opens the invitation, chooses **Crear cuenta y recibir código**, and enters the code delivered to that authorized email. A verified but unprovisioned address cannot enter a tenant. Password recovery uses a one-time email link (15-minute expiry), not security questions or passwords sent by email.
-
-Super Admin continues to use its existing separate PANAPP session. For bakery administrators, Super Admin provisions an allowed email in `panapp_users`; the user creates their Neon Auth account from that bakery's login page. PANAPP only links an email-verified Neon identity to an already-authorized bakery account, and the database stores the identity's Neon `sub` for subsequent logins. Unprovisioned email addresses cannot access a bakery. Existing local password hashes are retained for migration history, but bakery login and password changes use Neon Auth. A Neon Auth account must be created/verified before an existing bakery administrator can log in.
-
-The browser auth page uses the official `@neondatabase/auth` client via a version-pinned ESM CDN import. FastAPI exchanges the verified Neon token for the existing PANAPP `HttpOnly` session cookie, so the tenant API and PostgreSQL access rules stay server-side. This project intentionally does **not** configure the Neon Data API or its `VITE_NEON_DATA_API_URL`: it has no Vite/React frontend and continues to query PostgreSQL through FastAPI. The Data API example requires a separate migration of queries and Row Level Security policies; its URL alone would not integrate it.
-
-The public key endpoint used to verify a Neon Auth JWT is:
-```text
-https://ep-lucky-lake-b8de2v7l.neonauth.c-14.us-east-1.aws.neon.tech/neondb/auth/.well-known/jwks.json
-```
-
-Never accept a decoded JWT without verifying its signature against the JWKS and validating its issuer and audience. Do not put database credentials or private keys in browser configuration; the Neon Auth URL, issuer, and audience are public identifiers.
+Port 587 uses STARTTLS by default. Set `PANAPP_SMTP_USE_SSL=true` for SMTP-over-SSL providers such as port 465. If SMTP is missing or unavailable, the login page displays an error instead of granting access. The Neon Auth JWT endpoints remain only for compatibility with previously linked sessions; the bakery login page and password-management form use PANAPP's email-code flow.
 
 ## Owner provisioning and access
 
@@ -110,9 +104,9 @@ Use an email and a password of at least 12 characters. On first startup, PANAPP 
 
 Sign in at `/superadmin` to create a bakery tenant, provision its administrator, choose a monthly or annual plan, suspend/reactivate/cancel service, and record or review payments. Tenant accounts are scoped to their bakery. The global owner session and bakery session use separate `HttpOnly` cookies.
 
-For each bakery account, Super Admin authorizes the administrator's email. When SMTP is configured, PANAPP sends a single-use invitation link; the administrator creates a Neon Auth account with the authorized email and verifies it before signing in. Without SMTP, Super Admin receives the invitation link to share securely. The invitation expires after seven days and is required to link a new Neon identity. Legacy PANAPP password hashes are checked only to begin migration; a verified Neon Auth account is still required to create a session.
+For each bakery account, Super Admin authorizes the administrator's email. When SMTP is configured, PANAPP sends an invitation link. The invited administrator verifies that same authorized email with a one-time code and chooses their own password. If invitation-email delivery is unavailable, Super Admin can share the single-use invitation link. Password recovery uses the same email-code flow; PANAPP never sends an initial or reset password by email.
 
-Configure these server-side environment variables to send invitation emails:
+Configure these server-side environment variables to send invitation emails and login-verification codes:
 
 ```text
 PANAPP_SMTP_HOST
@@ -123,13 +117,13 @@ PANAPP_SMTP_FROM
 PANAPP_SMTP_USE_SSL=false
 ```
 
-Port 587 uses STARTTLS by default. Set `PANAPP_SMTP_USE_SSL=true` for an SMTP-over-SSL provider such as port 465. If delivery fails, the administrator remains authorized and Super Admin can copy the single-use invitation link from the displayed result.
+Port 587 uses STARTTLS by default. Set `PANAPP_SMTP_USE_SSL=true` for an SMTP-over-SSL provider such as port 465. If delivery fails, the administrator remains authorized and Super Admin can copy the single-use invitation link from the displayed result. Login and recovery codes require functioning SMTP delivery.
 
 PANAPP records subscription plans and manually registered payment references; it does not connect to a payment processor or issue electronic tax invoices. MRR is an estimate based on active subscriptions, with annual plans prorated over 12 months. A tenant whose subscription period expires is suspended on its next tenant request.
 Recording a payment with status `paid` reactivates a non-canceled tenant and extends its current subscription by one billing period. Canceled tenants cannot be reactivated by payment entry.
 Super Admin can review the latest 100 payment records per bakery and download a monthly CSV of paid subscription revenue. The report filters by `paid_at` in the `America/Bogota` time zone.
 
-Super-admin passwords are hashed with PBKDF2-HMAC-SHA256; tenant passwords are managed by Neon Auth. PANAPP sessions are stored in PostgreSQL, expire after eight hours, and are revoked when a tenant is suspended or canceled.
+Super-admin and tenant passwords are hashed with PBKDF2-HMAC-SHA256. PANAPP sessions are stored in PostgreSQL, expire after eight hours, and are revoked when a tenant is suspended or canceled.
 The [cookie policy](./cookie-policy.html) describes the essential HttpOnly session cookies; PANAPP does not use advertising or analytics cookies.
 
 ## Automatic GitHub sync
