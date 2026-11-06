@@ -239,6 +239,7 @@ async function loadMonthlyReport() {
 function configureTenantAdmin(tenant) {
     const form = document.getElementById('tenantAdminForm');
     form.dataset.slug = tenant.slug;
+    document.getElementById('tenantAdminEmail').value = tenant.admin_email || '';
     document.getElementById('tenantAdminTitle').textContent = `Administrador · ${tenant.name}`;
     document.getElementById('tenantAdminMessage').classList.add('hidden');
     document.getElementById('tenantAdminDialog').showModal();

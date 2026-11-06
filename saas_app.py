@@ -1252,7 +1252,7 @@ def superadmin_tenants(_: Annotated[dict, Depends(require_superadmin)]):
             """
             SELECT tenant.panaderia_id, tenant.slug, tenant.name, tenant.status, tenant.created_at, tenant.menu_token,
                    subscription.billing_period, subscription.status, plan.code, plan.name,
-                   plan.monthly_amount, plan.annual_amount
+                   plan.monthly_amount, plan.annual_amount, admin.username
             FROM panapp_tenants tenant
             LEFT JOIN LATERAL (
                 SELECT plan_id, billing_period, status, current_period_end
@@ -1261,8 +1261,16 @@ def superadmin_tenants(_: Annotated[dict, Depends(require_superadmin)]):
                 ORDER BY created_at DESC LIMIT 1
             ) subscription ON TRUE
             LEFT JOIN panapp_plans plan ON plan.plan_id = subscription.plan_id
+            LEFT JOIN LATERAL (
+                SELECT username
+                FROM panapp_users
+                WHERE panaderia_id = tenant.panaderia_id AND role = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) admin ON TRUE
             ORDER BY tenant.created_at DESC
-            """
+            """,
+            (ROLE_ADMIN,),
         ).fetchall()
     return [
         {
@@ -1278,6 +1286,7 @@ def superadmin_tenants(_: Annotated[dict, Depends(require_superadmin)]):
             "plan_name": row[9],
             "monthly_amount": float(row[10]) if row[10] is not None else None,
             "annual_amount": float(row[11]) if row[11] is not None else None,
+            "admin_email": row[12],
         }
         for row in rows
     ]
