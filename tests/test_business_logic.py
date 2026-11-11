@@ -20,7 +20,9 @@ from saas_app import (
     EmailCodeVerifyBody,
     PaymentBody,
     PublicOrderBody,
+    TenantAdminBody,
     TenantCreateBody,
+    provision_tenant_admin,
     public_catalog,
     resolve_public_hostname,
     send_smtp_email,
@@ -404,6 +406,55 @@ class SuperAdminTenantListTests(unittest.TestCase):
 
         self.assertEqual(tenants[0]["admin_email"], "admin@example.test")
         self.assertEqual(connection.execute.call_args.args[1], ("ADMIN_PANADERIA",))
+
+
+class AdminProvisioningTests(unittest.TestCase):
+    def request(self):
+        return Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/api/superadmin/tenants/panaderia-central/admin",
+            "headers": [(b"host", b"testserver")],
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("127.0.0.1", 1234),
+            "query_string": b"",
+        })
+
+    @patch("saas_app.tenant_by_slug")
+    @patch("saas_app.connect_db")
+    def test_provisioning_returns_temporary_password_and_menu_links(self, connect_db, tenant_by_slug):
+        from saas_app import password_hash
+
+        tenant_id = uuid4()
+        user_id = uuid4()
+        tenant_by_slug.return_value = {
+            "id": str(tenant_id),
+            "slug": "panaderia-central",
+            "name": "Panadería Central",
+            "menu_token": "abcdefghijklmnopqrstuvwx",
+        }
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchone.return_value = (user_id,)
+        connect_db.return_value = connection
+
+        result = provision_tenant_admin(
+            "panaderia-central",
+            TenantAdminBody(username=" Admin@example.test "),
+            self.request(),
+            {},
+        )
+
+        self.assertGreaterEqual(len(result["temporary_password"]), 24)
+        self.assertEqual(result["username"], "admin@example.test")
+        self.assertEqual(result["menu_url"], "http://testserver/m/abcdefghijklmnopqrstuvwx")
+        self.assertEqual(result["menu_qr_url"], f"{result['menu_url']}/qr.svg")
+        self.assertEqual(result["admin_login_url"], "http://testserver/t/panaderia-central/login")
+        insert_sql, parameters = connection.execute.call_args_list[0].args
+        self.assertIn("must_change_password", insert_sql)
+        self.assertTrue(parameters[-1] == "ADMIN_PANADERIA")
+        self.assertEqual(password_hash(result["temporary_password"], bytes.fromhex(parameters[3])), parameters[4])
 
 
 class NeonTokenVerificationTests(unittest.TestCase):
