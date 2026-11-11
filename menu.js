@@ -110,7 +110,9 @@ function createImagePlaceholder() {
     const placeholder = document.createElement('div');
     placeholder.className = 'menu-product-image-placeholder';
     placeholder.setAttribute('aria-hidden', 'true');
-    placeholder.innerHTML = '<i class="fa-solid fa-bread-slice"></i>';
+    const icon = document.createElement('i');
+    icon.className = 'fa-solid fa-bread-slice';
+    placeholder.append(icon);
     return placeholder;
 }
 
