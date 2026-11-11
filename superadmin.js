@@ -56,16 +56,34 @@ function startInactivityTimeout() {
     recordActivity();
 }
 
-function showInvitationResult(element, result, fallbackMessage) {
-    showMessage(element, result.invitation_message || fallbackMessage);
-    if (!result.invitation_url) return;
-    const link = document.createElement('a');
-    link.href = result.invitation_url;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.className = 'mt-2 block break-all font-bold underline';
-    link.textContent = 'Abrir o copiar enlace de invitación';
-    element.append(document.createElement('br'), link);
+function showAccessDetails(element, result, fallbackMessage) {
+    showMessage(element, result.access_message || fallbackMessage);
+    if (result.temporary_password) {
+        const password = document.createElement('p');
+        password.className = 'mt-3';
+        const label = document.createElement('strong');
+        label.textContent = 'Contraseña temporal (compártela una sola vez): ';
+        const value = document.createElement('code');
+        value.className = 'select-all rounded bg-white px-2 py-1 font-mono font-bold';
+        value.textContent = result.temporary_password;
+        password.append(label, value);
+        element.append(password);
+    }
+
+    [
+        ['menu_url', 'Abrir menú del cliente'],
+        ['menu_qr_url', 'Abrir o descargar el QR del menú'],
+        ['admin_login_url', 'Enlace de acceso a administración']
+    ].forEach(([key, label]) => {
+        if (!result[key]) return;
+        const link = document.createElement('a');
+        link.href = result[key];
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.className = 'mt-2 block break-all font-bold underline';
+        link.textContent = label;
+        element.append(link);
+    });
 }
 
 function money(value) {
@@ -241,7 +259,9 @@ function configureTenantAdmin(tenant) {
     form.dataset.slug = tenant.slug;
     document.getElementById('tenantAdminEmail').value = tenant.admin_email || '';
     document.getElementById('tenantAdminTitle').textContent = `Administrador · ${tenant.name}`;
-    document.getElementById('tenantAdminMessage').classList.add('hidden');
+    const message = document.getElementById('tenantAdminMessage');
+    message.classList.add('hidden');
+    message.replaceChildren();
     document.getElementById('tenantAdminDialog').showModal();
 }
 
@@ -441,7 +461,7 @@ tenantForm.addEventListener('submit', async event => {
         const result = await api('/api/superadmin/tenants', { method: 'POST', body: JSON.stringify(values) });
         form.reset();
         tenantSlugManuallyEdited = false;
-        showInvitationResult(message, result, 'Panadería creada.');
+        showAccessDetails(message, result, 'Panadería creada.');
         await refreshDashboard();
     } catch (error) {
         showMessage(message, error.message || 'No se pudo crear la panadería.', true);
@@ -460,7 +480,7 @@ document.getElementById('tenantAdminForm').addEventListener('submit', async even
                 username: document.getElementById('tenantAdminEmail').value.trim()
             })
         });
-        showInvitationResult(message, result, 'Correo autorizado.');
+        showAccessDetails(message, result, 'Acceso administrador configurado.');
     } catch (error) {
         showMessage(message, error.message || 'No se pudo guardar el administrador.', true);
     }
