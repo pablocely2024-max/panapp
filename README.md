@@ -74,9 +74,9 @@ The migration preserves the existing `panapp_state` and the existing administrat
 
 ### Email verification and the app database
 
-PANAPP bakery-admin access uses its own backend authentication and does not call Neon Auth from the browser. The prior Neon Auth `Invalid origin` rejection therefore does not block the email-code flow. Neon PostgreSQL remains the app database; keep its connection string in the ignored `.env.local` file as `DATABASE_URL`.
+PANAPP bakery-admin access uses its own backend authentication and does not call Neon Auth from the browser. The prior Neon Auth `Invalid origin` rejection therefore does not block password login. Neon PostgreSQL remains the app database; keep its connection string in the ignored `.env.local` file as `DATABASE_URL`.
 
-Super Admin authorizes the bakery email in `panapp_users`. On first access or password recovery, the administrator requests a six-digit, one-time code. PANAPP sends it only to that already-authorized address through the app's SMTP settings. The code expires after 10 minutes, can be attempted at most five times, and is stored hashed in PostgreSQL. After verification, the administrator chooses their own password (12–128 characters); PANAPP stores a PBKDF2-HMAC-SHA256 hash and issues its existing `HttpOnly` session cookie. PANAPP never emails passwords.
+When Super Admin creates a bakery or configures its administrator, PANAPP generates a random temporary password and displays it once with the administrator login link and the bakery's menu/QR links. Share the temporary password securely; the administrator must choose a new password (12–128 characters) on first login. PANAPP stores only its PBKDF2-HMAC-SHA256 hash and never emails passwords. Email codes remain available for account recovery and are sent only to the authorized email; codes expire after 10 minutes, allow at most five attempts, and are stored hashed in PostgreSQL.
 
 SMTP is required for verification and recovery codes. Configure these server-side deployment variables:
 
@@ -102,9 +102,9 @@ PANAPP_SUPERADMIN_PASSWORD
 
 Use an email and a password of at least 12 characters. On first startup, PANAPP hashes the password and creates the owner if no matching owner exists. There is no public owner registration. Do not expose `.env.local` or commit secrets.
 
-Sign in at `/superadmin` to create a bakery tenant, provision its administrator, choose a monthly or annual plan, suspend/reactivate/cancel service, and record or review payments. Tenant accounts are scoped to their bakery. The global owner session and bakery session use separate `HttpOnly` cookies.
+Sign in at `/superadmin` to create a bakery tenant, provision its administrator, choose a monthly or annual plan, suspend/reactivate/cancel service, and record or review payments. Creating or reconfiguring an administrator generates a new temporary password and revokes existing sessions; deliver the password securely because it is shown only in the Super Admin result. The result also includes the admin login link, public menu link, and existing QR download link. Tenant accounts are scoped to their bakery. The global owner session and bakery session use separate `HttpOnly` cookies.
 
-For each bakery account, Super Admin authorizes the administrator's email. When SMTP is configured, PANAPP sends an invitation link. The invited administrator verifies that same authorized email with a one-time code and chooses their own password. In **Configurar admin**, Super Admin can also send a recovery code to the already-authorized address. The administrator uses it to set a new password; PANAPP never sends passwords by email. If invitation-email delivery is unavailable, Super Admin can share the single-use invitation link.
+In **Configurar admin**, Super Admin can send a recovery code to the already-authorized address if needed. The administrator uses it to set a new password; PANAPP never sends passwords by email.
 
 Configure these server-side environment variables to send invitation emails and login-verification codes:
 
