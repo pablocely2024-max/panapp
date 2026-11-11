@@ -552,6 +552,7 @@ function mostrarModulo(idModulo, boton) {
     animarModulo(idModulo);
     if (idModulo === 'secInforme') renderizarInforme();
     if (idModulo === 'secSeguridad') actualizarResumenSeguridad();
+    if (idModulo === 'secNotificaciones') cargarNotificaciones();
 }
 
 async function actualizarResumenSeguridad() {
@@ -569,6 +570,67 @@ async function actualizarResumenSeguridad() {
             : 'No hay una sesión administradora activa en este navegador.';
     } catch {
         resumen.textContent = 'No se pudo consultar el estado de la sesión.';
+    }
+}
+
+function configurarEnlaceSoporte() {
+    const link = document.getElementById('supportWhatsappLink');
+    if (!link) return;
+    const text = `Hola, necesito ayuda con PANAPP. Panadería: ${perfilEmpresa.nombre || 'sin nombre configurado'}.`;
+    link.href = `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+}
+
+async function cargarNotificaciones(silencioso = false) {
+    const loading = document.getElementById('notificationLoading');
+    const list = document.getElementById('notificationList');
+    const empty = document.getElementById('notificationEmpty');
+    const error = document.getElementById('notificationError');
+    const count = document.getElementById('notificationCount');
+    if (!list) return;
+    if (!servidorLocalActivo()) {
+        loading.classList.add('hidden');
+        empty.textContent = 'Las notificaciones de PANAPP requieren conexión con el servidor.';
+        empty.classList.remove('hidden');
+        return;
+    }
+
+    if (!silencioso) {
+        loading.classList.remove('hidden');
+        error.classList.add('hidden');
+    }
+    try {
+        const response = await fetch(tenantPath('/api/notifications'), { cache: 'no-store' });
+        const notices = await response.json();
+        if (!response.ok) throw new Error(notices.detail || `Error HTTP ${response.status}`);
+        list.replaceChildren(...notices.map(notice => {
+            const card = document.createElement('article');
+            card.className = 'notification-card';
+            const title = document.createElement('h3');
+            title.textContent = notice.title;
+            const message = document.createElement('p');
+            message.textContent = notice.message;
+            const scheduled = document.createElement('time');
+            scheduled.dateTime = notice.scheduled_at;
+            scheduled.textContent = new Date(notice.scheduled_at).toLocaleString('es-CO', {
+                dateStyle: 'full',
+                timeStyle: 'short',
+                timeZone: 'America/Bogota'
+            }) + ' · hora de Colombia';
+            card.append(title, message, scheduled);
+            return card;
+        }));
+        empty.classList.toggle('hidden', notices.length > 0);
+        count.textContent = notices.length > 99 ? '99+' : String(notices.length);
+        count.classList.toggle('hidden', notices.length === 0);
+        loading.classList.add('hidden');
+        error.classList.add('hidden');
+    } catch (requestError) {
+        console.error('No se pudieron cargar las notificaciones de PANAPP.', requestError);
+        loading.classList.add('hidden');
+        if (!silencioso) {
+            error.textContent = requestError.message || 'No se pudieron cargar los avisos.';
+            error.classList.remove('hidden');
+        }
     }
 }
 
