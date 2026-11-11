@@ -956,6 +956,9 @@ async function optimizarImagenProducto(file) {
 }
 
 async function uploadProductImageFile(productId, file) {
+    if (!servidorLocalActivo()) {
+        throw new Error('Las imágenes requieren el servidor PANAPP. Ejecuta .\\start-panapp.ps1 y abre el panel desde http://127.0.0.1:8765.');
+    }
     const image = await optimizarImagenProducto(file);
     const response = await fetch(tenantPath(`/api/products/${encodeURIComponent(String(productId))}/image`), {
         method: 'PUT',
@@ -1180,6 +1183,11 @@ function descargarPDF() {
 }
 
 async function protegerPanelAdmin() {
+    if (window.location.protocol === 'file:') {
+        document.getElementById('serverAccessWarning').classList.remove('hidden');
+        actualizarEstadoServidor('Ejecuta PANAPP en http://127.0.0.1:8765', false);
+        return;
+    }
     try {
         const response = await fetch(tenantPath('/api/security/status'), { cache: 'no-store' });
         const status = await response.json();

@@ -114,6 +114,9 @@
                         <input id="filtroGlobal" type="search" oninput="filtrarGlobal(this.value)" placeholder="Buscar en toda la gestión" class="w-full pl-9 pr-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm">
                     </label>
                 </div>
+                <p id="serverAccessWarning" class="hidden rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950" role="alert">
+                    El panel abierto como archivo no puede sincronizar el menú ni enviar mensajes o avisos. Ejecuta <code>.\start-panapp.ps1</code> y abre PANAPP desde <a class="underline" href="http://127.0.0.1:8765/admin">http://127.0.0.1:8765/admin</a>.
+                </p>
 
                 <!-- 1. DASHBOARD -->
                 <section id="secDashboard" class="seccion-modulo animate-fade-in block">
@@ -518,6 +521,6 @@
         </form>
     </dialog>
     <input id="productImagePicker" class="hidden" type="file" accept="image/jpeg,image/png,image/webp">
-    <script src="admin.js?v=12"></script>
+    <script src="admin.js?v=13"></script>
 </body>
 </html>

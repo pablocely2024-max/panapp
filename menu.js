@@ -156,6 +156,14 @@ function updateBusiness(business) {
 
 async function loadMenu() {
     if (menuState.loading) return;
+    if (window.location.protocol === 'file:') {
+        const error = document.getElementById('menuError');
+        error.textContent = 'El menú en vivo requiere el servidor PANAPP. Ejecuta .\\start-panapp.ps1 y abre http://127.0.0.1:8765/menu.';
+        error.classList.remove('hidden');
+        document.getElementById('menuUpdatedAt').textContent = 'Sin conexión con el servidor PANAPP.';
+        document.getElementById('menuProducts').setAttribute('aria-busy', 'false');
+        return;
+    }
     menuState.loading = true;
     const error = document.getElementById('menuError');
     const productsContainer = document.getElementById('menuProducts');
@@ -261,4 +269,4 @@ document.getElementById('closeOrderDialog').addEventListener('click', () => {
 });
 updateOrderTypeFields();
 loadMenu();
-window.setInterval(loadMenu, 3_000);
+if (window.location.protocol !== 'file:') window.setInterval(loadMenu, 3_000);

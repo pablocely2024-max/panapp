@@ -8,6 +8,9 @@ let inactivityTimer = null;
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 
 async function api(path, options = {}) {
+    if (window.location.protocol === 'file:') {
+        throw new Error('El portal requiere el servidor PANAPP. Ejecuta .\\start-panapp.ps1 y abre http://127.0.0.1:8765/superadmin.');
+    }
     const response = await fetch(path, {
         cache: 'no-store',
         ...options,
@@ -16,6 +19,14 @@ async function api(path, options = {}) {
             ...(options.headers || {})
         }
     });
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+        const body = await response.text();
+        const message = !response.ok && body && !/^\s*</.test(body)
+            ? body
+            : `El servidor devolvió una respuesta no válida (HTTP ${response.status}).`;
+        throw new Error(message);
+    }
     const result = await response.json();
     if (!response.ok) throw new Error(result.detail || `Error HTTP ${response.status}`);
     return result;
