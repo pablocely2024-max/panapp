@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Administración PANAPP</title>
+    <script src="/theme.js"></script>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -75,6 +76,13 @@
                     <button data-module="secSeguridad" onclick="mostrarModulo('secSeguridad', this)" class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-slate-800 flex items-center gap-3 transition-all menu-btn">
                         <i class="fa-solid fa-shield-halved w-5 text-center"></i> Seguridad
                     </button>
+                    <button data-module="secNotificaciones" onclick="mostrarModulo('secNotificaciones', this)" class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-slate-800 flex items-center gap-3 transition-all menu-btn">
+                        <i class="fa-solid fa-bell w-5 text-center"></i> Notificaciones
+                        <span id="notificationCount" class="hidden ml-auto rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-black text-white"></span>
+                    </button>
+                    <button data-module="secSoporte" onclick="mostrarModulo('secSoporte', this)" class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-slate-800 flex items-center gap-3 transition-all menu-btn">
+                        <i class="fa-solid fa-life-ring w-5 text-center"></i> Soporte PANAPP
+                    </button>
                 </nav>
             </div>
             
@@ -87,6 +95,7 @@
                         <p id="estadoServidor" class="server-status" role="status">Sin conectar</p>
                     </div>
                 </div>
+                <button type="button" data-theme-toggle class="w-full rounded-lg border border-slate-600 px-3 py-2 text-slate-200 text-sm font-bold hover:bg-slate-700">🌙 Modo oscuro</button>
                 <button onclick="cerrarSesion()" class="w-full flex items-center justify-center gap-2 text-slate-400 hover:text-white font-bold text-sm py-2 transition-all">
                     <i class="fa-solid fa-right-from-bracket"></i> Salir
                 </button>
@@ -303,6 +312,7 @@
                                     <thead class="text-xs text-gray-400 uppercase bg-gray-50/50">
                                         <tr>
                                             <th class="p-3 rounded-l-lg">Producto</th>
+                                            <th class="p-3">Imagen</th>
                                             <th class="p-3">Stock Final</th>
                                             <th class="p-3 rounded-r-lg">Costo Producción</th>
                                         </tr>
@@ -448,10 +458,65 @@
                     </div>
                 </section>
 
+                <section id="secNotificaciones" class="seccion-modulo hidden">
+                    <header class="company-settings-heading">
+                        <div><span class="store-eyebrow">AVISOS DE PANAPP</span><h2>Notificaciones</h2><p>Avisos de mantenimiento programados para todas las panaderías.</p></div>
+                        <span class="company-settings-icon"><i class="fa-solid fa-bell"></i></span>
+                    </header>
+                    <p class="login-guidance mt-4">Estos avisos informan la fecha y hora de una actualización. No suspenden automáticamente tu acceso.</p>
+                    <div id="notificationLoading" class="mt-5 grid gap-3" aria-hidden="true">
+                        <div class="notification-skeleton"></div><div class="notification-skeleton"></div>
+                    </div>
+                    <div id="notificationList" class="mt-5 grid gap-3" aria-live="polite"></div>
+                    <p id="notificationEmpty" class="hidden mt-5 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">No hay avisos de mantenimiento programados.</p>
+                    <p id="notificationError" class="hidden mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"></p>
+                </section>
+
+                <section id="secSoporte" class="seccion-modulo hidden">
+                    <header class="company-settings-heading">
+                        <div><span class="store-eyebrow">AYUDA PANAPP</span><h2>Soporte</h2><p>Escríbenos por WhatsApp o envía un mensaje al equipo de PANAPP.</p></div>
+                        <span class="company-settings-icon"><i class="fa-solid fa-life-ring"></i></span>
+                    </header>
+                    <div class="company-settings-form mt-5">
+                        <form id="supportForm">
+                            <div class="company-form-section">
+                                <div class="company-form-grid">
+                                    <label class="company-field company-field-wide">Asunto<input id="supportSubject" required minlength="3" maxlength="120" placeholder="¿En qué podemos ayudarte?"></label>
+                                    <label class="company-field company-field-wide">Mensaje<textarea id="supportMessage" required minlength="5" maxlength="2000" rows="5" placeholder="Cuéntanos qué ocurre y qué estabas haciendo."></textarea></label>
+                                </div>
+                                <p id="supportStatus" class="mt-4 text-sm text-slate-600" role="status"></p>
+                            </div>
+                            <footer class="company-form-footer">
+                                <a id="supportWhatsappLink" class="company-save-button" href="https://wa.me/573208964745" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-whatsapp"></i> Escribir por WhatsApp</a>
+                                <button id="sendSupportButton" class="company-save-button" type="submit"><i class="fa-solid fa-paper-plane"></i> Enviar a Super Admin</button>
+                            </footer>
+                        </form>
+                    </div>
+                </section>
+
             </div>
         </main>
     </div>
 
-    <script src="admin.js?v=9"></script>
+    <dialog id="productDialog" class="product-dialog">
+        <form id="productForm" class="product-dialog-form">
+            <header class="product-dialog-header"><div><span class="store-eyebrow">CATÁLOGO DE LA PANADERÍA</span><h2>Agregar producto</h2></div><button id="closeProductDialog" type="button" class="cart-close" aria-label="Cerrar formulario">✕</button></header>
+            <div class="company-form-grid">
+                <label class="company-field company-field-wide">Nombre del producto<input name="name" required minlength="2" maxlength="120"></label>
+                <label class="company-field">Categoría<input name="category" required maxlength="60" placeholder="Panadería, bebidas..."></label>
+                <label class="company-field">Unidades disponibles<input name="stock" type="number" min="0" max="1000000" step="1" value="0" required></label>
+                <label class="company-field">Costo por unidad<input name="cost" type="number" min="0" max="999999999" step="1" value="0" required></label>
+                <label class="company-field">Precio de venta<input name="price" type="number" min="1" max="999999999" step="1" required></label>
+                <label class="company-field company-field-wide">Foto de referencia
+                    <input id="newProductImage" name="image" type="file" accept="image/jpeg,image/png,image/webp">
+                    <small>Se optimiza automáticamente antes de guardarse. Máximo 1 MB después de optimizar.</small>
+                </label>
+            </div>
+            <p id="productFormStatus" class="login-error hidden" role="alert"></p>
+            <div class="product-dialog-actions"><button id="cancelProductDialog" class="report-button report-button-light" type="button">Cancelar</button><button class="report-button" type="submit">Guardar producto</button></div>
+        </form>
+    </dialog>
+    <input id="productImagePicker" class="hidden" type="file" accept="image/jpeg,image/png,image/webp">
+    <script src="admin.js?v=10"></script>
 </body>
 </html>
