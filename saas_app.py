@@ -993,13 +993,14 @@ def public_catalog(tenant_id: str, tenant_name: str = "", menu_token: str = "") 
             "SELECT product_id, updated_at FROM panapp_product_images WHERE panaderia_id = %s",
             (uuid.UUID(tenant_id),),
         ).fetchall()
-    image_versions = {str(row[0]): int(row[1].timestamp()) for row in image_rows}
+    image_versions = {str(row[0]): int(row[1].timestamp() * 1000) for row in image_rows}
 
     def public_text(value: object) -> str:
         return value if isinstance(value, str) else ""
 
     return {
         "revision": state["revision"],
+        "image_revision": max(image_versions.values(), default=0),
         "business": {
             key: (
                 tenant_name

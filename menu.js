@@ -163,11 +163,12 @@ async function loadMenu() {
         const response = await fetch(tenantPath('/api/menu'), { cache: 'no-store' });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || `Error HTTP ${response.status}`);
-        const changed = !menuState.loaded || result.revision !== menuState.revision;
+        const revision = `${result.revision ?? 0}:${result.image_revision ?? 0}`;
+        const changed = !menuState.loaded || revision !== menuState.revision;
         if (changed) {
             menuState.products = Array.isArray(result.products) ? result.products : [];
             menuState.phone = result.whatsapp || '';
-            menuState.revision = result.revision ?? null;
+            menuState.revision = revision;
             updateBusiness(result.business || {});
             renderMenu(result.business?.moneda || 'COP');
         }

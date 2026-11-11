@@ -254,8 +254,9 @@ class PublicCatalogTests(unittest.TestCase):
 
         self.assertEqual(
             catalog["products"][0]["image_url"],
-            f"/m/menu-token/api/products/12/image?v={int(image_updated.timestamp())}",
+            f"/m/menu-token/api/products/12/image?v={int(image_updated.timestamp() * 1000)}",
         )
+        self.assertEqual(catalog["image_revision"], int(image_updated.timestamp() * 1000))
 
 
 class SmtpEmailTests(unittest.TestCase):
