@@ -427,6 +427,135 @@ async function refreshDashboard() {
     }
 }
 
+function formatColombiaDate(value) {
+    return new Date(value).toLocaleString('es-CO', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'America/Bogota'
+    }) + ' · Colombia';
+}
+
+async function loadSupportMessages() {
+    const list = document.getElementById('supportMessageList');
+    const error = document.getElementById('supportInboxError');
+    error.classList.add('hidden');
+    try {
+        const messages = await api('/api/superadmin/support/messages');
+        if (!messages.length) {
+            const empty = document.createElement('p');
+            empty.className = 'rounded-xl border border-dashed border-slate-200 p-5 text-sm text-slate-500';
+            empty.textContent = 'No hay mensajes de soporte.';
+            list.replaceChildren(empty);
+            return;
+        }
+        list.replaceChildren(...messages.map(message => {
+            const card = document.createElement('article');
+            card.className = 'support-ticket';
+            const heading = document.createElement('div');
+            heading.className = 'flex flex-wrap items-start justify-between gap-2';
+            const title = document.createElement('h3');
+            title.className = 'font-bold text-slate-900';
+            title.textContent = message.subject;
+            const statusLabel = document.createElement('span');
+            statusLabel.className = 'rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900';
+            statusLabel.textContent = message.status === 'in_progress' ? 'En seguimiento' : message.status === 'resolved' ? 'Resuelto' : 'Abierto';
+            heading.append(title, statusLabel);
+            const from = document.createElement('p');
+            from.className = 'mt-2 text-xs font-semibold text-slate-500';
+            from.textContent = `${message.bakery_name} · ${message.slug} · ${message.sender} · ${formatColombiaDate(message.created_at)}`;
+            const body = document.createElement('p');
+            body.className = 'mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700';
+            body.textContent = message.message;
+            const actions = document.createElement('div');
+            actions.className = 'mt-4 flex flex-wrap items-center gap-2';
+            const select = document.createElement('select');
+            select.className = 'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm';
+            [['open', 'Abierto'], ['in_progress', 'En seguimiento'], ['resolved', 'Resuelto']].forEach(([value, label]) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                option.selected = value === message.status;
+                select.append(option);
+            });
+            const save = document.createElement('button');
+            save.type = 'button';
+            save.className = 'rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-700';
+            save.textContent = 'Guardar estado';
+            save.addEventListener('click', async () => {
+                save.disabled = true;
+                try {
+                    await api(`/api/superadmin/support/messages/${encodeURIComponent(message.id)}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ status: select.value })
+                    });
+                    await loadSupportMessages();
+                } catch (requestError) {
+                    showMessage(error, requestError.message || 'No se pudo actualizar el mensaje.', true);
+                } finally {
+                    save.disabled = false;
+                }
+            });
+            actions.append(select, save);
+            card.append(heading, from, body, actions);
+            return card;
+        }));
+    } catch (requestError) {
+        showMessage(error, requestError.message || 'No se pudo cargar la bandeja de soporte.', true);
+        list.replaceChildren();
+    }
+}
+
+async function loadMaintenanceNotices() {
+    const list = document.getElementById('maintenanceNoticeList');
+    const error = document.getElementById('maintenanceNoticesError');
+    error.classList.add('hidden');
+    try {
+        const notices = await api('/api/superadmin/maintenance-notices');
+        if (!notices.length) {
+            const empty = document.createElement('p');
+            empty.className = 'rounded-xl border border-dashed border-slate-200 p-5 text-sm text-slate-500';
+            empty.textContent = 'No hay avisos programados.';
+            list.replaceChildren(empty);
+            return;
+        }
+        list.replaceChildren(...notices.map(notice => {
+            const card = document.createElement('article');
+            card.className = 'maintenance-notice';
+            const title = document.createElement('h4');
+            title.className = 'font-bold text-slate-900';
+            title.textContent = notice.title;
+            const message = document.createElement('p');
+            message.className = 'mt-1 whitespace-pre-wrap text-sm leading-5 text-slate-600';
+            message.textContent = notice.message;
+            const scheduled = document.createElement('time');
+            scheduled.className = 'mt-2 block text-xs font-semibold text-slate-500';
+            scheduled.dateTime = notice.scheduled_at;
+            scheduled.textContent = formatColombiaDate(notice.scheduled_at);
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'mt-3 rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-800 hover:bg-red-50';
+            cancel.textContent = 'Cancelar aviso';
+            cancel.addEventListener('click', async () => {
+                if (!window.confirm(`¿Cancelar el aviso “${notice.title}”?`)) return;
+                cancel.disabled = true;
+                try {
+                    await api(`/api/superadmin/maintenance-notices/${encodeURIComponent(notice.id)}`, { method: 'DELETE' });
+                    await loadMaintenanceNotices();
+                } catch (requestError) {
+                    showMessage(error, requestError.message || 'No se pudo cancelar el aviso.', true);
+                } finally {
+                    cancel.disabled = false;
+                }
+            });
+            card.append(title, message, scheduled, cancel);
+            return card;
+        }));
+    } catch (requestError) {
+        showMessage(error, requestError.message || 'No se pudieron cargar los avisos.', true);
+        list.replaceChildren();
+    }
+}
+
 async function showDashboard() {
     loginPanel.classList.add('hidden');
     dashboardPanel.classList.remove('hidden');
@@ -436,6 +565,7 @@ async function showDashboard() {
         await loadPlans();
         await refreshDashboard();
         await loadMonthlyReport();
+        await Promise.all([loadSupportMessages(), loadMaintenanceNotices()]);
     } catch (error) {
         showGlobalError(error);
     }
