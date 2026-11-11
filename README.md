@@ -72,24 +72,11 @@ The database user needs permission to create and migrate tables. PANAPP creates 
 
 The migration preserves the existing `panapp_state` and the existing administrator credentials by assigning them to `PANAPP_LEGACY_TENANT_SLUG` (default `panaderia-principal`). It does not erase the old security table. Back up Neon before deploying schema changes.
 
-### Email verification and the app database
+### Bakery administrator passwords and the app database
 
-PANAPP bakery-admin access uses its own backend authentication and does not call Neon Auth from the browser. The prior Neon Auth `Invalid origin` rejection therefore does not block password login. Neon PostgreSQL remains the app database; keep its connection string in the ignored `.env.local` file as `DATABASE_URL`.
+PANAPP bakery-admin access uses its own backend password authentication and does not call Neon Auth from the browser. Neon PostgreSQL remains the app database; keep its connection string in the ignored `.env.local` file as `DATABASE_URL`.
 
-When Super Admin creates a bakery or configures its administrator, PANAPP generates a random temporary password and displays it once with the administrator login link and the bakery's menu/QR links. Share the temporary password securely; the administrator must choose a new password (12–128 characters) on first login. PANAPP stores only its PBKDF2-HMAC-SHA256 hash and never emails passwords. Email codes remain available for account recovery and are sent only to the authorized email; codes expire after 10 minutes, allow at most five attempts, and are stored hashed in PostgreSQL.
-
-SMTP is required for verification and recovery codes. Configure these server-side deployment variables:
-
-```text
-PANAPP_SMTP_HOST=smtp.gmail.com
-PANAPP_SMTP_PORT=587
-PANAPP_SMTP_USER=panappanaderias@gmail.com
-PANAPP_SMTP_PASSWORD
-PANAPP_SMTP_FROM=panappanaderias@gmail.com
-PANAPP_SMTP_USE_SSL=false
-```
-
-The host, port, user, and sender default to the Gmail values above; `PANAPP_SMTP_PASSWORD` must be a Google App Password for `panappanaderias@gmail.com`, not its normal account password. Port 587 uses STARTTLS and SMTP operations time out after eight seconds. PANAPP reports that Gmail accepted the message, not that Gmail guaranteed inbox delivery; check Spam and Render logs if it does not arrive. Set `PANAPP_SMTP_USE_SSL=true` for SMTP-over-SSL providers such as port 465. If SMTP is missing or unavailable, the login page displays an error instead of granting access. The Neon Auth JWT endpoints remain only for compatibility with previously linked sessions; the bakery login page and password-management form use PANAPP's email-code flow.
+When Super Admin creates a bakery or configures its administrator, PANAPP generates a random temporary password and displays it with the administrator login link and the bakery's menu/QR links. Share the password securely; the administrator can log in immediately and change it later in **Seguridad**. PANAPP stores only its PBKDF2-HMAC-SHA256 hash and does not send passwords by email. No email code or SMTP setup is required to log in.
 
 ## Owner provisioning and access
 
@@ -103,21 +90,6 @@ PANAPP_SUPERADMIN_PASSWORD
 Use an email and a password of at least 12 characters. On first startup, PANAPP hashes the password and creates the owner if no matching owner exists. There is no public owner registration. Do not expose `.env.local` or commit secrets.
 
 Sign in at `/superadmin` to create a bakery tenant, provision its administrator, choose a monthly or annual plan, suspend/reactivate/cancel service, and record or review payments. Creating or reconfiguring an administrator generates a new temporary password and revokes existing sessions; deliver the password securely because it is shown only in the Super Admin result. The result also includes the admin login link, public menu link, and existing QR download link. Tenant accounts are scoped to their bakery. The global owner session and bakery session use separate `HttpOnly` cookies.
-
-In **Configurar admin**, Super Admin can send a recovery code to the already-authorized address if needed. The administrator uses it to set a new password; PANAPP never sends passwords by email.
-
-Configure these server-side environment variables to send invitation emails and login-verification codes:
-
-```text
-PANAPP_SMTP_HOST=smtp.gmail.com
-PANAPP_SMTP_PORT=587
-PANAPP_SMTP_USER=panappanaderias@gmail.com
-PANAPP_SMTP_PASSWORD
-PANAPP_SMTP_FROM=panappanaderias@gmail.com
-PANAPP_SMTP_USE_SSL=false
-```
-
-The host, user, and sender default to the Gmail values above; `PANAPP_SMTP_PASSWORD` must be a Google App Password. Port 587 uses STARTTLS and SMTP operations time out after eight seconds. If Gmail accepts a message but it does not arrive, check Spam and the Render logs. Set `PANAPP_SMTP_USE_SSL=true` for an SMTP-over-SSL provider such as port 465. If invitation delivery fails, the administrator remains authorized and Super Admin can copy the single-use invitation link from the displayed result.
 
 PANAPP records subscription plans and manually registered payment references; it does not connect to a payment processor or issue electronic tax invoices. MRR is an estimate based on active subscriptions, with annual plans prorated over 12 months. A tenant whose subscription period expires is suspended on its next tenant request.
 Recording a payment with status `paid` reactivates a non-canceled tenant and extends its current subscription by one billing period. Canceled tenants cannot be reactivated by payment entry.
