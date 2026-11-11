@@ -13,7 +13,7 @@ function getStoredTheme() {
 function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
     document.querySelectorAll('[data-theme-toggle]').forEach(button => {
-        const nextTheme = theme === 'dark' ? 'light' : 'dark';
+        const nextTheme = theme === 'dark' ? 'claro' : 'oscuro';
         button.textContent = button.dataset.themeCompact === 'true'
             ? (theme === 'dark' ? '☀️' : '🌙')
             : (theme === 'dark' ? '☀️ Modo claro' : '🌙 Modo oscuro');
