@@ -367,14 +367,10 @@ def initialize_database() -> None:
                 password_hash TEXT,
                 role TEXT NOT NULL CHECK (role IN ('ADMIN_PANADERIA', 'MESERO')),
                 auth_subject TEXT,
-                must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE (panaderia_id, username)
             )
             """
-        )
-        connection.execute(
-            "ALTER TABLE panapp_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE"
         )
         connection.execute(
             """
@@ -1293,8 +1289,8 @@ def create_tenant(body: TenantCreateBody, request: Request, _: Annotated[dict, D
         connection.execute(
             """
             INSERT INTO panapp_users
-                (user_id, panaderia_id, username, salt, password_hash, role, must_change_password)
-            VALUES (%s, %s, %s, %s, %s, %s, FALSE)
+                (user_id, panaderia_id, username, salt, password_hash, role)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
             (user_id, tenant_id, email, salt.hex(), password_digest, ROLE_ADMIN),
         )
@@ -1338,12 +1334,11 @@ def provision_tenant_admin(
         user = connection.execute(
             """
             INSERT INTO panapp_users
-                (user_id, panaderia_id, username, salt, password_hash, role, must_change_password)
-            VALUES (%s, %s, %s, %s, %s, %s, FALSE)
+                (user_id, panaderia_id, username, salt, password_hash, role)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (panaderia_id, username) DO UPDATE
             SET salt = EXCLUDED.salt,
                 password_hash = EXCLUDED.password_hash,
-                must_change_password = FALSE,
                 role = EXCLUDED.role
             RETURNING user_id
             """,
@@ -2135,7 +2130,7 @@ def tenant_password(slug: str, request: Request, response: Response, body: dict)
         salt = secrets.token_bytes(32)
         connection.execute(
             """
-            UPDATE panapp_users SET salt = %s, password_hash = %s, must_change_password = FALSE
+            UPDATE panapp_users SET salt = %s, password_hash = %s
             WHERE user_id = %s AND panaderia_id = %s
             """,
             (salt.hex(), password_hash(new_password, salt), uuid.UUID(identity["principal_id"]), uuid.UUID(tenant["id"])),
