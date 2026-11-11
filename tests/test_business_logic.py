@@ -21,6 +21,7 @@ from saas_app import (
     PublicOrderBody,
     TenantAdminBody,
     TenantCreateBody,
+    TenantStatusBody,
     archive_tenant,
     provision_tenant_admin,
     public_catalog,
@@ -34,7 +35,9 @@ from saas_app import (
     global_tenant_login,
     tenant_menu_qr,
     tenant_menu_url,
+    tenant_by_slug,
     tenant_password,
+    update_tenant_status,
     validate_slug,
     hash_token,
     verify_legacy_tenant_credentials,
@@ -389,6 +392,42 @@ class TenantArchivingTests(unittest.TestCase):
             connection.execute.call_args.args[0],
             "UPDATE panapp_tenants SET archived_at = NULL WHERE panaderia_id = %s",
         )
+
+    @patch("saas_app.connect_db")
+    def test_archived_tenant_is_not_available_to_public_routes(self, connect_db):
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchone.return_value = (
+            uuid4(),
+            "panaderia-central",
+            "Panadería Central",
+            "canceled",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "random-menu-token",
+            "canceled",
+            datetime(2027, 1, 1, tzinfo=timezone.utc),
+            True,
+        )
+        connect_db.return_value = connection
+
+        with self.assertRaises(HTTPException) as error:
+            tenant_by_slug("panaderia-central")
+
+        self.assertEqual(error.exception.status_code, 423)
+
+    @patch("saas_app.tenant_by_slug")
+    def test_archived_tenant_must_be_restored_before_activation(self, tenant_by_slug):
+        tenant_by_slug.return_value = {"id": str(uuid4()), "archived": True}
+
+        with self.assertRaises(HTTPException) as error:
+            update_tenant_status(
+                "panaderia-central",
+                TenantStatusBody(status="active"),
+                self.request("/api/superadmin/tenants/panaderia-central/status"),
+                {},
+            )
+
+        self.assertEqual(error.exception.status_code, 409)
 
 
 class AdminProvisioningTests(unittest.TestCase):
