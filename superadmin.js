@@ -57,6 +57,9 @@ function startInactivityTimeout() {
 }
 
 function showAccessDetails(element, result, fallbackMessage) {
+    if (!result.temporary_password || !result.admin_login_url || !result.menu_url || !result.menu_qr_url) {
+        throw new Error('El servidor no entregó la contraseña temporal y los enlaces. Actualiza la aplicación y vuelve a intentarlo.');
+    }
     showMessage(element, result.access_message || fallbackMessage);
     if (result.temporary_password) {
         const password = document.createElement('p');
@@ -483,30 +486,6 @@ document.getElementById('tenantAdminForm').addEventListener('submit', async even
         showAccessDetails(message, result, 'Acceso administrador configurado.');
     } catch (error) {
         showMessage(message, error.message || 'No se pudo guardar el administrador.', true);
-    }
-});
-
-document.getElementById('sendRecoveryCodeButton').addEventListener('click', async event => {
-    const button = event.currentTarget;
-    const email = document.getElementById('tenantAdminEmail').value.trim();
-    const message = document.getElementById('tenantAdminMessage');
-    if (!email || !document.getElementById('tenantAdminEmail').checkValidity()) {
-        showMessage(message, 'Escribe el correo autorizado de esta panadería.', true);
-        return;
-    }
-    button.disabled = true;
-    try {
-        const result = await api(`/api/superadmin/tenants/${encodeURIComponent(
-            document.getElementById('tenantAdminForm').dataset.slug
-        )}/admin/recovery-code`, {
-            method: 'POST',
-            body: JSON.stringify({ username: email })
-        });
-        showMessage(message, result.message || 'El servidor de correo aceptó el código. Revisa Recibidos y Spam.');
-    } catch (error) {
-        showMessage(message, error.message || 'No se pudo enviar el código de recuperación.', true);
-    } finally {
-        button.disabled = false;
     }
 });
 
