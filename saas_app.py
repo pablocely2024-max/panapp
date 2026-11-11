@@ -797,7 +797,7 @@ def require_superadmin(request: Request) -> dict:
     return identity
 
 
-def require_tenant_admin(request: Request, tenant_id: str, *, allow_password_change: bool = False) -> dict:
+def require_tenant_admin(request: Request, tenant_id: str) -> dict:
     identity = current_session(request)
     if (
         not identity
@@ -806,8 +806,6 @@ def require_tenant_admin(request: Request, tenant_id: str, *, allow_password_cha
         or identity["role"] != ROLE_ADMIN
     ):
         raise HTTPException(status_code=401, detail="Inicia sesión en esta panadería para continuar.")
-    if identity["must_change_password"] and not allow_password_change:
-        raise HTTPException(status_code=428, detail="Cambia la contraseña temporal para continuar.")
     return identity
 
 
@@ -1347,7 +1345,7 @@ def create_tenant(body: TenantCreateBody, request: Request, _: Annotated[dict, D
             """
             INSERT INTO panapp_users
                 (user_id, panaderia_id, username, salt, password_hash, role, must_change_password)
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+            VALUES (%s, %s, %s, %s, %s, %s, FALSE)
             """,
             (user_id, tenant_id, email, salt.hex(), password_digest, ROLE_ADMIN),
         )
@@ -1396,7 +1394,7 @@ def provision_tenant_admin(
             ON CONFLICT (panaderia_id, username) DO UPDATE
             SET salt = EXCLUDED.salt,
                 password_hash = EXCLUDED.password_hash,
-                must_change_password = TRUE,
+                must_change_password = FALSE,
                 role = EXCLUDED.role
             RETURNING user_id
             """,
@@ -1707,9 +1705,7 @@ def tenant_login_page(slug: str):
 @app.get("/t/{slug}/admin")
 def tenant_admin_page(slug: str, request: Request):
     tenant = tenant_by_slug(slug)
-    identity = require_tenant_admin(request, tenant["id"], allow_password_change=True)
-    if identity["must_change_password"]:
-        return RedirectResponse(f"/t/{quote(slug, safe='')}/login?change-password=1", status_code=303)
+    require_tenant_admin(request, tenant["id"])
     return asset("admin.html")
 
 
@@ -2403,7 +2399,7 @@ def tenant_activity(slug: str, request: Request):
 def tenant_password(slug: str, request: Request, response: Response, body: dict):
     require_same_origin(request)
     tenant = tenant_by_slug(slug)
-    identity = require_tenant_admin(request, tenant["id"], allow_password_change=True)
+    identity = require_tenant_admin(request, tenant["id"])
     current_password = str(body.get("current_password", ""))
     new_password = str(body.get("new_password", ""))
     if not 12 <= len(new_password) <= 256:
