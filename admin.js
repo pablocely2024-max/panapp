@@ -722,13 +722,17 @@ function renderizarTodo() {
 
     const productos = document.getElementById('tbProductosInv');
     productos.innerHTML = db.productos.map(producto => {
-        const image = producto.image_url
-            ? `<img class="product-thumbnail" src="${escapar(producto.image_url)}" alt="Imagen de ${escapar(producto.nombre)}" loading="lazy">`
+        const imagePath = tenantPath(`/api/products/${encodeURIComponent(String(producto.id))}/image`);
+        const imageUrl = typeof producto.image_url === 'string' && producto.image_url.startsWith(imagePath)
+            ? producto.image_url
+            : '';
+        const image = imageUrl
+            ? `<img class="product-thumbnail" src="${escapar(imageUrl)}" alt="Imagen de ${escapar(producto.nombre)}" loading="lazy">`
             : '<span class="product-thumbnail-placeholder" aria-hidden="true"><i class="fa-solid fa-image"></i></span>';
         return `
         <tr class="hover:bg-slate-50">
             <td class="p-3 font-bold text-slate-700">${escapar(producto.nombre)}</td>
-            <td class="p-3"><div class="product-image-cell">${image}<button type="button" class="product-image-button" data-product-image="${escapar(String(producto.id))}">${producto.image_url ? 'Cambiar foto' : 'Agregar foto'}</button></div></td>
+            <td class="p-3"><div class="product-image-cell">${image}<button type="button" class="product-image-button" data-product-image="${escapar(String(producto.id))}">${imageUrl ? 'Cambiar foto' : 'Agregar foto'}</button></div></td>
             <td class="p-3"><span class="stock-pill ${producto.stock <= 15 ? 'stock-low' : ''}">${Number(producto.stock) || 0} un.</span></td>
             <td class="p-3 text-red-600 font-medium">${formatoCOP(producto.costoProd)}</td>
         </tr>`;

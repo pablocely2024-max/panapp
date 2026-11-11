@@ -384,6 +384,12 @@ tr[hidden], .menu-product[hidden] { display: none !important; }
 .product-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .product-dialog-header h2 { margin: 4px 0 0; color: var(--ink); font-size: 25px; }
 .product-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.menu-product-card { overflow: hidden; animation: enter 280ms ease both; transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease; }
+.menu-product-card:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(28, 41, 36, .12); }
+.menu-product-image { display: grid; min-height: 150px; aspect-ratio: 16 / 9; place-items: center; overflow: hidden; background: #f0eee6; }
+.menu-product-image img { width: 100%; height: 100%; object-fit: cover; transition: transform 450ms ease; }
+.menu-product-card:hover .menu-product-image img { transform: scale(1.035); }
+.menu-product-image-placeholder { display: grid; width: 100%; height: 100%; min-height: inherit; place-items: center; color: #9a8066; font-size: 28px; }
 .notification-card, .support-ticket, .maintenance-notice { padding: 17px; border: 1px solid var(--line); background: #fff; animation: enter 280ms ease both; }
 .notification-card h3 { margin: 0; color: var(--ink); font-size: 18px; }
 .notification-card p { margin: 8px 0; color: var(--ink-soft); font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
@@ -419,6 +425,7 @@ html[data-theme="dark"] .notification-card,
 html[data-theme="dark"] .support-ticket,
 html[data-theme="dark"] .maintenance-notice,
 html[data-theme="dark"] #dashboardPanel > section,
+html[data-theme="dark"] #dashboardPanel article.bg-white,
 html[data-theme="dark"] #loginPanel { background-color: #1d2621 !important; color: #e6eee8 !important; border-color: #36423a !important; }
 html[data-theme="dark"] #appPrincipal main .bg-slate-50,
 html[data-theme="dark"] #appPrincipal main .bg-gray-50,
@@ -484,6 +491,9 @@ html[data-theme="dark"] .store-location-banner { background-color: #202a24 !impo
 html[data-theme="dark"] .store-category.is-active { background: #d04a35 !important; color: #fff !important; }
 html[data-theme="dark"] .store-product-buy button { background: #263d32; color: #d7eee0; }
 html[data-theme="dark"] .store-footer { border-color: #36423a; }
+html[data-theme="dark"] .menu-product-card { background: #1d2621 !important; color: #e6eee8 !important; border-color: #36423a !important; }
+html[data-theme="dark"] .menu-product-image { background: #26312a; }
+html[data-theme="dark"] .menu-product-image-placeholder { color: #c3ad92; }
 html[data-theme="dark"] .menu-skeleton-image,
 html[data-theme="dark"] .menu-skeleton-line,
 html[data-theme="dark"] .notification-skeleton { background-image: linear-gradient(100deg, #29342d 20%, #39453d 40%, #29342d 60%); }
