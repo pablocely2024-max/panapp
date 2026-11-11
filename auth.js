@@ -26,6 +26,9 @@ function updateSubmitState() {
             && /^\d{6}$/.test(otpInput.value.trim())
             && resetPasswordInput.value.length >= 12
             && resetPasswordInput.value.length <= 128
+            && resetPasswordInput.value === resetConfirmInput.value,
+        'change-password': resetPasswordInput.value.length >= 12
+            && resetPasswordInput.value.length <= 128
             && resetPasswordInput.value === resetConfirmInput.value
     }[mode];
     submitButton.disabled = !valid || (!globalLogin && !tenantConfigured);
@@ -38,11 +41,14 @@ function showError(message) {
 
 function updateAuthMode() {
     const verifying = mode === 'verify-email';
+    const changingPassword = mode === 'change-password';
+    const editingPassword = verifying || changingPassword;
+    document.getElementById('authEmailField').classList.toggle('hidden', changingPassword);
     document.getElementById('authPasswordField').classList.toggle('hidden', mode !== 'sign-in');
     document.getElementById('authOtpField').classList.toggle('hidden', !verifying);
     document.getElementById('authResendVerification').classList.toggle('hidden', !verifying);
-    document.getElementById('authResetPasswordField').classList.toggle('hidden', !verifying);
-    document.getElementById('authResetConfirmField').classList.toggle('hidden', !verifying);
+    document.getElementById('authResetPasswordField').classList.toggle('hidden', !editingPassword);
+    document.getElementById('authResetConfirmField').classList.toggle('hidden', !editingPassword);
     document.getElementById('authForgotPassword').classList.toggle(
         'hidden',
         mode !== 'sign-in' || (!globalLogin && !tenantConfigured)
@@ -51,22 +57,24 @@ function updateAuthMode() {
         'hidden',
         !['sign-in', 'request-code'].includes(mode) || (!globalLogin && !tenantConfigured)
     );
-    document.getElementById('authBackToLogin').classList.toggle('hidden', mode === 'sign-in');
-    emailInput.readOnly = verifying;
+    document.getElementById('authBackToLogin').classList.toggle('hidden', mode === 'sign-in' || changingPassword);
+    emailInput.readOnly = verifying || changingPassword;
     passwordInput.required = mode === 'sign-in';
     otpInput.required = verifying;
-    resetPasswordInput.required = verifying;
-    resetConfirmInput.required = verifying;
+    resetPasswordInput.required = editingPassword;
+    resetConfirmInput.required = editingPassword;
 
     const titles = {
         'sign-in': 'Inicia sesión',
         'request-code': 'Verifica tu correo',
-        'verify-email': 'Verifica tu correo'
+        'verify-email': 'Verifica tu correo',
+        'change-password': 'Cambia tu contraseña temporal'
     };
     const buttons = {
         'sign-in': 'Entrar al panel',
         'request-code': 'Enviar código al correo',
-        'verify-email': 'Verificar código y guardar contraseña'
+        'verify-email': 'Verificar código y guardar contraseña',
+        'change-password': 'Guardar contraseña nueva'
     };
     title.textContent = titles[mode];
     submitButton.textContent = buttons[mode];
@@ -94,6 +102,13 @@ async function postAuth(path, body) {
 }
 
 function redirectToAdmin(result) {
+    if (result.must_change_password) {
+        emailInput.value = result.username || emailInput.value;
+        instructions.textContent = 'Por seguridad, crea una contraseña personal para continuar al panel.';
+        setMode('change-password');
+        resetPasswordInput.focus();
+        return;
+    }
     const adminPath = globalLogin
         ? `/t/${encodeURIComponent(result.tenant)}/admin`
         : tenantPath('/admin');
@@ -114,6 +129,12 @@ async function checkSession() {
         const status = await response.json();
         if (!response.ok) throw new Error(status.detail || 'No se pudo consultar la sesión.');
         if (status.authenticated) {
+            if (status.must_change_password) {
+                emailInput.value = status.username || '';
+                instructions.textContent = 'Por seguridad, crea una contraseña personal para continuar al panel.';
+                setMode('change-password');
+                return;
+            }
             redirectToAdmin(status);
             return;
         }
@@ -134,6 +155,27 @@ async function checkSession() {
 form.addEventListener('submit', async event => {
     event.preventDefault();
     errorMessage.classList.add('hidden');
+    if (mode === 'change-password') {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Guardando…';
+        try {
+            if (resetPasswordInput.value.length < 12 || resetPasswordInput.value.length > 128) {
+                throw new Error('La contraseña debe tener entre 12 y 128 caracteres.');
+            }
+            if (resetPasswordInput.value !== resetConfirmInput.value) {
+                throw new Error('Las contraseñas no coinciden.');
+            }
+            const result = await postAuth('/api/security/password', {
+                new_password: resetPasswordInput.value
+            });
+            redirectToAdmin(result);
+        } catch (error) {
+            showError(error.message || 'No se pudo guardar la contraseña.');
+        } finally {
+            updateAuthMode();
+        }
+        return;
+    }
     const email = emailInput.value.trim().toLowerCase();
     if (!email || !emailInput.checkValidity()) {
         showError('Escribe un correo válido.');
