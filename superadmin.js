@@ -3,6 +3,7 @@ const loginPanel = document.getElementById('loginPanel');
 const dashboardPanel = document.getElementById('dashboardPanel');
 const tenantTable = document.getElementById('tenantTable');
 let availablePlans = [];
+let archivedTenantsView = false;
 let inactivityTimer = null;
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -62,14 +63,18 @@ function showAccessDetails(element, result, fallbackMessage) {
     }
     showMessage(element, result.access_message || fallbackMessage);
     if (result.temporary_password) {
-        const password = document.createElement('p');
-        password.className = 'mt-3';
-        const label = document.createElement('strong');
-        label.textContent = 'Contraseña temporal (compártela una sola vez): ';
+        const password = document.createElement('div');
+        password.className = 'mt-4 rounded-xl border border-emerald-200 bg-white p-4';
+        const label = document.createElement('p');
+        label.className = 'font-bold text-slate-900';
+        label.textContent = 'Contraseña para entrar a la administración';
         const value = document.createElement('code');
-        value.className = 'select-all rounded bg-white px-2 py-1 font-mono font-bold';
+        value.className = 'mt-2 block select-all break-all rounded-lg bg-emerald-50 px-3 py-3 font-mono text-lg font-bold text-emerald-900';
         value.textContent = result.temporary_password;
-        password.append(label, value);
+        const hint = document.createElement('p');
+        hint.className = 'mt-2 text-xs text-slate-600';
+        hint.textContent = 'Guárdala y compártela con el cliente. Podrá cambiarla después desde Seguridad.';
+        password.append(label, value, hint);
         element.append(password);
     }
 
@@ -128,6 +133,17 @@ async function updateTenantStatus(tenant, status) {
         method: 'PATCH',
         body: JSON.stringify({ status })
     });
+    await refreshDashboard();
+}
+
+async function archiveTenant(tenant) {
+    if (!window.confirm(`¿Borrar y ocultar ${tenant.name}? Se dará de baja y se conservarán sus datos; podrás restaurarla después.`)) return;
+    await api(`/api/superadmin/tenants/${encodeURIComponent(tenant.slug)}/archive`, { method: 'POST', body: '{}' });
+    await refreshDashboard();
+}
+
+async function restoreTenant(tenant) {
+    await api(`/api/superadmin/tenants/${encodeURIComponent(tenant.slug)}/restore`, { method: 'POST', body: '{}' });
     await refreshDashboard();
 }
 
@@ -297,7 +313,7 @@ function createTenantRow(tenant) {
     qrLink.className = 'mt-1 inline-block text-xs font-bold text-amber-800 underline';
     qrLink.textContent = 'Descargar QR del menú';
     nameCell.append(name, slug, menuLink, qrLink);
-    row.append(nameCell, tableCell(tenant.status), tableCell(tenant.plan_name || 'Sin plan'));
+    row.append(nameCell, tableCell(tenant.archived ? 'Baja · datos conservados' : tenant.status), tableCell(tenant.plan_name || 'Sin plan'));
 
     const billingCell = document.createElement('td');
     billingCell.className = 'px-3 py-4 align-top text-slate-700';
@@ -310,6 +326,18 @@ function createTenantRow(tenant) {
     actions.className = 'px-3 py-4';
     const actionWrap = document.createElement('div');
     actionWrap.className = 'flex min-w-[380px] flex-wrap gap-2';
+    if (tenant.archived) {
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.className = 'rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-50';
+        restore.textContent = 'Restaurar panadería';
+        restore.addEventListener('click', () => restoreTenant(tenant).catch(showGlobalError));
+        actionWrap.append(restore);
+        actions.append(actionWrap);
+        row.append(actions);
+        return row;
+    }
+
     const statusButton = document.createElement('button');
     statusButton.type = 'button';
     statusButton.className = 'rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold hover:bg-slate-50';
@@ -367,6 +395,12 @@ function createTenantRow(tenant) {
         cancel.addEventListener('click', () => updateTenantStatus(tenant, 'canceled').catch(showGlobalError));
         actionWrap.append(cancel);
     }
+    const archive = document.createElement('button');
+    archive.type = 'button';
+    archive.className = 'rounded-lg border border-red-300 px-3 py-2 text-xs font-bold text-red-800 hover:bg-red-50';
+    archive.textContent = 'Borrar panadería';
+    archive.addEventListener('click', () => archiveTenant(tenant).catch(showGlobalError));
+    actionWrap.append(archive);
     actions.append(actionWrap);
     row.append(actions);
     return row;
@@ -379,10 +413,12 @@ function showGlobalError(error) {
 
 async function refreshDashboard() {
     const listError = document.getElementById('tenantListError');
+    document.getElementById('tenantListTitle').textContent = archivedTenantsView ? 'Panaderías dadas de baja' : 'Panaderías';
+    document.getElementById('archivedTenantsButton').textContent = archivedTenantsView ? 'Ver panaderías activas' : 'Ver panaderías dadas de baja';
     listError.classList.add('hidden');
     try {
         const [tenants] = await Promise.all([
-            api('/api/superadmin/tenants'),
+            api(`/api/superadmin/tenants?archived=${archivedTenantsView}`),
             loadOverview()
         ]);
         tenantTable.replaceChildren(...tenants.map(createTenantRow));
@@ -490,6 +526,10 @@ document.getElementById('tenantAdminForm').addEventListener('submit', async even
 });
 
 document.getElementById('refreshButton').addEventListener('click', refreshDashboard);
+document.getElementById('archivedTenantsButton').addEventListener('click', () => {
+    archivedTenantsView = !archivedTenantsView;
+    refreshDashboard();
+});
 document.getElementById('downloadReportButton').addEventListener('click', downloadMonthlyReport);
 const reportDateParts = new Intl.DateTimeFormat('en', {
     timeZone: 'America/Bogota',
