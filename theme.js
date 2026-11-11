@@ -14,9 +14,12 @@ function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
     document.querySelectorAll('[data-theme-toggle]').forEach(button => {
         const nextTheme = theme === 'dark' ? 'light' : 'dark';
-        button.textContent = theme === 'dark' ? '☀️ Modo claro' : '🌙 Modo oscuro';
+        button.textContent = button.dataset.themeCompact === 'true'
+            ? (theme === 'dark' ? '☀️' : '🌙')
+            : (theme === 'dark' ? '☀️ Modo claro' : '🌙 Modo oscuro');
         button.setAttribute('aria-label', `Activar modo ${nextTheme}`);
         button.setAttribute('aria-pressed', String(theme === 'dark'));
+        button.title = `Activar modo ${nextTheme}`;
     });
 }
 
