@@ -301,14 +301,23 @@ tr[hidden], .menu-product[hidden] { display: none !important; }
 }
 @keyframes stock-pulse { 50% { box-shadow: 0 0 0 5px rgba(255, 191, 91, .22); } }
 
+@media (min-width: 768px) and (max-width: 1023px) {
+    #appPrincipal aside { width: 16rem; }
+    #appPrincipal main { min-width: 0; }
+    #appPrincipal main > div { padding: 28px 20px; }
+}
+
 @media (max-width: 767px) {
     #appPrincipal { height: auto; min-height: 100vh; flex-direction: column; overflow: visible; }
-    #appPrincipal aside { width: 100%; flex: none; }
+    #appPrincipal aside { position: sticky; top: 0; width: 100%; flex: none; }
     #appPrincipal aside > div:first-child { display: block !important; width: 100%; min-width: 0; }
     #appPrincipal #navMenu { display: flex; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: auto; padding-top: 0; }
     #appPrincipal #navMenu button { width: auto; min-width: max-content; padding: 10px 12px; }
-    #appPrincipal aside > div:last-child { display: none; }
-    #appPrincipal main { overflow: visible; }
+    #appPrincipal aside > div:last-child { display: flex; align-items: center; justify-content: flex-end; width: 100%; padding: 0 16px 10px; }
+    #appPrincipal aside > div:last-child > div:first-child,
+    #appPrincipal aside > div:last-child > a { display: none; }
+    #appPrincipal aside > div:last-child > button { width: auto; padding: 8px 12px; }
+    #appPrincipal main { min-width: 0; overflow: visible; }
     #appPrincipal main > div { padding: 20px 16px; }
     #appPrincipal h2 { font-size: 26px; line-height: 1.15; }
     #secProveedores > div:first-child, #secPedidos > div:first-child { align-items: flex-start; flex-direction: column; }
