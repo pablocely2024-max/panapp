@@ -771,9 +771,9 @@ def current_session(request: Request) -> dict | None:
         if row:
             username_row = connection.execute(
                 """
-                SELECT username FROM panapp_users WHERE user_id = %s
+                SELECT username, must_change_password FROM panapp_users WHERE user_id = %s
                 UNION ALL
-                SELECT username FROM panapp_superadmins WHERE superadmin_id = %s
+                SELECT username, FALSE FROM panapp_superadmins WHERE superadmin_id = %s
                 LIMIT 1
                 """,
                 (row[1], row[1]),
@@ -786,6 +786,7 @@ def current_session(request: Request) -> dict | None:
         "panaderia_id": str(row[2]) if row[2] else None,
         "role": row[3],
         "username": username_row[0] if username_row else None,
+        "must_change_password": bool(username_row[1]) if username_row else False,
     }
 
 
@@ -796,7 +797,7 @@ def require_superadmin(request: Request) -> dict:
     return identity
 
 
-def require_tenant_admin(request: Request, tenant_id: str) -> dict:
+def require_tenant_admin(request: Request, tenant_id: str, *, allow_password_change: bool = False) -> dict:
     identity = current_session(request)
     if (
         not identity
@@ -805,6 +806,8 @@ def require_tenant_admin(request: Request, tenant_id: str) -> dict:
         or identity["role"] != ROLE_ADMIN
     ):
         raise HTTPException(status_code=401, detail="Inicia sesión en esta panadería para continuar.")
+    if identity["must_change_password"] and not allow_password_change:
+        raise HTTPException(status_code=428, detail="Cambia la contraseña temporal para continuar.")
     return identity
 
 
@@ -1704,7 +1707,9 @@ def tenant_login_page(slug: str):
 @app.get("/t/{slug}/admin")
 def tenant_admin_page(slug: str, request: Request):
     tenant = tenant_by_slug(slug)
-    require_tenant_admin(request, tenant["id"])
+    identity = require_tenant_admin(request, tenant["id"], allow_password_change=True)
+    if identity["must_change_password"]:
+        return RedirectResponse(f"/t/{quote(slug, safe='')}/login?change-password=1", status_code=303)
     return asset("admin.html")
 
 
@@ -1776,6 +1781,7 @@ def tenant_security_status(slug: str, request: Request):
         ),
         "username": username,
         "role": identity["role"] if identity else None,
+        "must_change_password": bool(identity and identity["must_change_password"]),
         "tenant": {"slug": tenant["slug"], "name": tenant["name"]},
     }
 
@@ -2163,6 +2169,7 @@ def verify_tenant_email_code(
             connection.execute(
                 """
                 UPDATE panapp_users SET salt = %s, password_hash = %s
+                    , must_change_password = FALSE
                 WHERE user_id = %s AND panaderia_id = %s
                 """,
                 (
@@ -2212,7 +2219,7 @@ def global_tenant_login(body: LoginBody, request: Request, response: Response):
         rows = connection.execute(
             """
             SELECT users.user_id, users.panaderia_id, users.salt, users.password_hash,
-                   users.role, tenants.slug
+                   users.role, tenants.slug, users.must_change_password
             FROM panapp_users users
             JOIN panapp_tenants tenants ON tenants.panaderia_id = users.panaderia_id
             WHERE users.username = %s
@@ -2245,7 +2252,13 @@ def global_tenant_login(body: LoginBody, request: Request, response: Response):
     tenant = tenant_by_slug(user[5])
     clear_login_failures(address)
     issue_session(response, request, "tenant", str(user[0]), user[4], tenant["id"])
-    return {"ok": True, "username": username, "role": user[4], "tenant": tenant["slug"]}
+    return {
+        "ok": True,
+        "username": username,
+        "role": user[4],
+        "tenant": tenant["slug"],
+        "must_change_password": bool(user[6]),
+    }
 
 
 @app.post("/t/{slug}/api/security/login")
@@ -2258,7 +2271,7 @@ def tenant_login(slug: str, body: LoginBody, request: Request, response: Respons
     with connect_db() as connection:
         row = connection.execute(
             """
-            SELECT user_id, username, salt, password_hash, role
+            SELECT user_id, username, salt, password_hash, role, must_change_password
             FROM panapp_users WHERE panaderia_id = %s AND username = %s
             """,
             (uuid.UUID(tenant["id"]), body.username.strip().lower()),
@@ -2274,7 +2287,13 @@ def tenant_login(slug: str, body: LoginBody, request: Request, response: Respons
         raise HTTPException(status_code=403, detail="Esta cuenta no tiene acceso al panel administrativo.")
     clear_login_failures(address)
     issue_session(response, request, "tenant", str(row[0]), row[4], tenant["id"])
-    return {"ok": True, "username": row[1], "role": row[4], "tenant": tenant["slug"]}
+    return {
+        "ok": True,
+        "username": row[1],
+        "role": row[4],
+        "tenant": tenant["slug"],
+        "must_change_password": bool(row[5]),
+    }
 
 
 @app.post("/t/{slug}/api/menu/orders")
@@ -2379,7 +2398,7 @@ def tenant_activity(slug: str, request: Request):
 def tenant_password(slug: str, request: Request, response: Response, body: dict):
     require_same_origin(request)
     tenant = tenant_by_slug(slug)
-    identity = require_tenant_admin(request, tenant["id"])
+    identity = require_tenant_admin(request, tenant["id"], allow_password_change=True)
     current_password = str(body.get("current_password", ""))
     new_password = str(body.get("new_password", ""))
     if not 12 <= len(new_password) <= 256:
@@ -2392,9 +2411,10 @@ def tenant_password(slug: str, request: Request, response: Response, body: dict)
             """,
             (uuid.UUID(identity["principal_id"]), uuid.UUID(tenant["id"])),
         ).fetchone()
-        if (
-            not row
-            or row[0] is None
+        if not row:
+            raise HTTPException(status_code=403, detail="No se pudo validar la cuenta administradora.")
+        if not identity["must_change_password"] and (
+            row[0] is None
             or row[1] is None
             or not hmac.compare_digest(password_hash(current_password, bytes.fromhex(row[0])), row[1])
         ):
@@ -2402,7 +2422,7 @@ def tenant_password(slug: str, request: Request, response: Response, body: dict)
         salt = secrets.token_bytes(32)
         connection.execute(
             """
-            UPDATE panapp_users SET salt = %s, password_hash = %s
+            UPDATE panapp_users SET salt = %s, password_hash = %s, must_change_password = FALSE
             WHERE user_id = %s AND panaderia_id = %s
             """,
             (salt.hex(), password_hash(new_password, salt), uuid.UUID(identity["principal_id"]), uuid.UUID(tenant["id"])),
@@ -2412,7 +2432,7 @@ def tenant_password(slug: str, request: Request, response: Response, body: dict)
             (uuid.UUID(identity["principal_id"]),),
         )
     issue_session(response, request, "tenant", identity["principal_id"], identity["role"], tenant["id"])
-    return {"ok": True}
+    return {"ok": True, "tenant": tenant["slug"], "username": identity["username"]}
 
 
 @app.get("/t/{slug}/api/state")
