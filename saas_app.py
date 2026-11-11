@@ -22,6 +22,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import quote, urlparse
+from zoneinfo import ZoneInfo
 
 import psycopg
 import jwt
@@ -449,6 +450,45 @@ def initialize_database() -> None:
                 revision BIGINT NOT NULL DEFAULT 1,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (panaderia_id, state_key)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS panapp_product_images (
+                panaderia_id UUID NOT NULL REFERENCES panapp_tenants(panaderia_id),
+                product_id TEXT NOT NULL,
+                content_type TEXT NOT NULL CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp')),
+                image_data BYTEA NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (panaderia_id, product_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS panapp_support_messages (
+                support_message_id UUID PRIMARY KEY,
+                panaderia_id UUID NOT NULL REFERENCES panapp_tenants(panaderia_id),
+                sender_username TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                message TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open'
+                    CHECK (status IN ('open', 'in_progress', 'resolved')),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS panapp_maintenance_notices (
+                notice_id UUID PRIMARY KEY,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                scheduled_at TIMESTAMPTZ NOT NULL,
+                active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
             """
         )
@@ -948,6 +988,12 @@ def public_catalog(tenant_id: str, tenant_name: str = "") -> dict:
     profile = data.get("perfilEmpresa") if isinstance(data.get("perfilEmpresa"), dict) else {}
     configuration = data.get("configuracionMenu") if isinstance(data.get("configuracionMenu"), dict) else {}
     products = data.get("productos") if isinstance(data.get("productos"), list) else []
+    with connect_db() as connection:
+        image_rows = connection.execute(
+            "SELECT product_id, updated_at FROM panapp_product_images WHERE panaderia_id = %s",
+            (uuid.UUID(tenant_id),),
+        ).fetchall()
+    image_versions = {str(row[0]): int(row[1].timestamp()) for row in image_rows}
 
     def public_text(value: object) -> str:
         return value if isinstance(value, str) else ""
@@ -970,6 +1016,11 @@ def public_catalog(tenant_id: str, tenant_name: str = "") -> dict:
                 "precio": product.get("precio") if isinstance(product.get("precio"), (int, float)) else None,
                 "categoria": public_text(product.get("categoria")) or "Especiales",
                 "disponible": isinstance(product.get("stock"), (int, float)) and product["stock"] > 0,
+                "image_url": (
+                    f"/m/{quote(menu_token, safe='')}/api/products/{quote(str(product.get('id')), safe='')}/image?v={image_versions[str(product.get('id'))]}"
+                    if menu_token and str(product.get("id")) in image_versions
+                    else None
+                ),
             }
             for product in products
             if isinstance(product, dict)
@@ -978,7 +1029,7 @@ def public_catalog(tenant_id: str, tenant_name: str = "") -> dict:
 
 
 def asset(name: str) -> FileResponse:
-    if name not in {"auth.html", "admin.html", "menu.html", "superadmin.html", "cookie-policy.html", "auth.js", "neon-auth.js", "admin.js", "menu.js", "superadmin.js", "styles.css"}:
+    if name not in {"auth.html", "admin.html", "menu.html", "superadmin.html", "cookie-policy.html", "auth.js", "neon-auth.js", "admin.js", "menu.js", "superadmin.js", "theme.js", "styles.css"}:
         raise HTTPException(status_code=404, detail="Recurso no encontrado.")
     media_types = {
         ".html": "text/html; charset=utf-8",
@@ -1018,6 +1069,21 @@ class PaymentBody(BaseModel):
     amount: float = Field(ge=0, le=999999999)
     reference: str = Field(default="", max_length=160)
     status: Literal["pending", "paid", "failed"] = "paid"
+
+
+class SupportMessageBody(BaseModel):
+    subject: str = Field(min_length=3, max_length=120)
+    message: str = Field(min_length=5, max_length=2000)
+
+
+class SupportMessageStatusBody(BaseModel):
+    status: Literal["open", "in_progress", "resolved"]
+
+
+class MaintenanceNoticeBody(BaseModel):
+    title: str = Field(min_length=3, max_length=120)
+    message: str = Field(min_length=5, max_length=1000)
+    scheduled_at: datetime
 
 
 class OrderItem(BaseModel):
