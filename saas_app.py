@@ -1342,7 +1342,7 @@ def provision_tenant_admin(
             """
             INSERT INTO panapp_users
                 (user_id, panaderia_id, username, salt, password_hash, role, must_change_password)
-            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+            VALUES (%s, %s, %s, %s, %s, %s, FALSE)
             ON CONFLICT (panaderia_id, username) DO UPDATE
             SET salt = EXCLUDED.salt,
                 password_hash = EXCLUDED.password_hash,
