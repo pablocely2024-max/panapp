@@ -132,6 +132,7 @@ async function checkSession() {
         if (!response.ok) throw new Error(status.detail || 'No se pudo consultar la sesión.');
         if (status.authenticated) {
             activeTenant = status.tenant || null;
+            tenantConfigured = true;
             if (status.must_change_password) {
                 emailInput.value = status.username || '';
                 instructions.textContent = 'Por seguridad, crea una contraseña personal para continuar al panel.';
@@ -145,7 +146,7 @@ async function checkSession() {
         instructions.textContent = status.configured || globalLogin
             ? globalLogin
                 ? 'Ingresa el correo habilitado por el propietario de tu panadería.'
-                : `Accede al panel de ${status.tenant?.name || 'tu panadería'}. Si es tu primer ingreso, solicita un código al correo autorizado.`
+                : `Accede al panel de ${status.tenant?.name || 'tu panadería'} con el correo y la contraseña que te entregaron.`
             : 'Esta panadería no tiene un administrador habilitado. Un propietario debe configurarlo en Super Admin.';
         adminSetupLink.classList.toggle('hidden', globalLogin || status.configured);
         setMode('sign-in');
@@ -168,9 +169,11 @@ form.addEventListener('submit', async event => {
             if (resetPasswordInput.value !== resetConfirmInput.value) {
                 throw new Error('Las contraseñas no coinciden.');
             }
-            const passwordPath = tenantBasePath || (activeTenant ? `/t/${encodeURIComponent(activeTenant)}` : '');
+            const passwordPath = globalLogin
+                ? (activeTenant ? `/t/${encodeURIComponent(activeTenant)}/api/security/password` : '')
+                : '/api/security/password';
             if (!passwordPath) throw new Error('No se pudo identificar la panadería de esta sesión.');
-            const result = await postAuth(`${passwordPath}/api/security/password`, {
+            const result = await postAuth(passwordPath, {
                 new_password: resetPasswordInput.value
             });
             redirectToAdmin(result);
