@@ -381,14 +381,60 @@ class AdminProvisioningTests(unittest.TestCase):
         self.assertEqual(parameters[-1], "ADMIN_PANADERIA")
         self.assertEqual(password_hash(result["temporary_password"], bytes.fromhex(parameters[3])), parameters[4])
 
+    @patch("saas_app.issue_session")
+    @patch("saas_app.allow_login_attempt", return_value=True)
+    @patch("saas_app.tenant_by_slug")
+    @patch("saas_app.connect_db")
+    def test_generated_password_logs_in_directly_without_email_code(
+        self,
+        connect_db,
+        tenant_by_slug,
+        allow_login_attempt,
+        issue_session,
+    ):
+        tenant_id = uuid4()
+        user_id = uuid4()
+        tenant = {
+            "id": str(tenant_id),
+            "slug": "panaderia-central",
+            "name": "Panadería Central",
+            "menu_token": "abcdefghijklmnopqrstuvwx",
+        }
+        tenant_by_slug.return_value = tenant
+        setup_connection = MagicMock()
+        setup_connection.__enter__.return_value = setup_connection
+        setup_connection.execute.return_value.fetchone.return_value = (user_id,)
+        login_connection = MagicMock()
+        login_connection.__enter__.return_value = login_connection
+        connect_db.side_effect = [setup_connection, login_connection]
+
+        credentials = provision_tenant_admin(
+            "panaderia-central",
+            TenantAdminBody(username="admin@example.test"),
+            self.request(),
+            {},
+        )
+        parameters = setup_connection.execute.call_args_list[0].args[1]
+        login_connection.execute.return_value.fetchall.return_value = [
+            (user_id, tenant_id, parameters[3], parameters[4], "ADMIN_PANADERIA", "panaderia-central")
+        ]
+        result = global_tenant_login(
+            LoginBody(username=credentials["username"], password=credentials["temporary_password"]),
+            self.request(),
+            Response(),
+        )
+
+        self.assertEqual(result["tenant"], "panaderia-central")
+        self.assertEqual(result["username"], "admin@example.test")
+        issue_session.assert_called_once()
+
 
 class TemporaryPasswordGateTests(unittest.TestCase):
-    def test_temporary_password_session_cannot_access_admin_data_before_change(self):
+    def test_temporary_password_session_can_access_admin_data_immediately(self):
         identity = {
             "principal_type": "tenant",
             "panaderia_id": "tenant-id",
             "role": "ADMIN_PANADERIA",
-            "must_change_password": True,
         }
         request = Request({
             "type": "http",
@@ -401,10 +447,7 @@ class TemporaryPasswordGateTests(unittest.TestCase):
             "query_string": b"",
         })
         with patch("saas_app.current_session", return_value=identity):
-            with self.assertRaises(HTTPException) as error:
-                require_tenant_admin(request, "tenant-id")
-            self.assertEqual(error.exception.status_code, 428)
-            self.assertIs(require_tenant_admin(request, "tenant-id", allow_password_change=True), identity)
+            self.assertIs(require_tenant_admin(request, "tenant-id"), identity)
 
 
 class NeonTokenVerificationTests(unittest.TestCase):
