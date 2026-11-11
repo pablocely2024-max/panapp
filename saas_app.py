@@ -982,7 +982,7 @@ def write_tenant_state(tenant_id: str, payload: dict) -> dict:
     return {"revision": row[0], "updated_at": row[1].isoformat()}
 
 
-def public_catalog(tenant_id: str, tenant_name: str = "") -> dict:
+def public_catalog(tenant_id: str, tenant_name: str = "", menu_token: str = "") -> dict:
     state = read_tenant_state(tenant_id)
     data = state["data"] if isinstance(state["data"], dict) else {}
     profile = data.get("perfilEmpresa") if isinstance(data.get("perfilEmpresa"), dict) else {}

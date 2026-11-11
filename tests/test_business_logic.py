@@ -172,8 +172,15 @@ class RequestValidationTests(unittest.TestCase):
 
 
 class PublicCatalogTests(unittest.TestCase):
+    @staticmethod
+    def set_image_rows(connect_db, rows=()):
+        connection = connect_db.return_value.__enter__.return_value
+        connection.execute.return_value.fetchall.return_value = list(rows)
+
+    @patch("saas_app.connect_db")
     @patch("saas_app.read_tenant_state")
-    def test_returns_dynamic_public_fields_without_internal_product_data(self, read_state):
+    def test_returns_dynamic_public_fields_without_internal_product_data(self, read_state, connect_db):
+        self.set_image_rows(connect_db)
         read_state.return_value = {
             "revision": 4,
             "data": {
@@ -194,7 +201,7 @@ class PublicCatalogTests(unittest.TestCase):
             },
         }
 
-        catalog = public_catalog("tenant-id")
+        catalog = public_catalog(str(uuid4()))
 
         self.assertEqual(catalog["revision"], 4)
         self.assertEqual(catalog["business"]["nombre"], "Panadería Central")
@@ -206,27 +213,49 @@ class PublicCatalogTests(unittest.TestCase):
                 "precio": 4500,
                 "categoria": "Panes",
                 "disponible": True,
+                "image_url": None,
             }],
         )
         self.assertNotIn("proveedores", catalog)
 
+    @patch("saas_app.connect_db")
     @patch("saas_app.read_tenant_state", return_value={"revision": 0, "data": None})
-    def test_uses_tenant_name_when_business_profile_is_not_configured(self, read_state):
-        catalog = public_catalog("tenant-id", "Panadería La Central")
+    def test_uses_tenant_name_when_business_profile_is_not_configured(self, read_state, connect_db):
+        self.set_image_rows(connect_db)
+        catalog = public_catalog(str(uuid4()), "Panadería La Central")
 
         self.assertEqual(catalog["business"]["nombre"], "Panadería La Central")
         self.assertEqual(catalog["products"], [])
 
+    @patch("saas_app.connect_db")
     @patch("saas_app.read_tenant_state")
-    def test_replaces_default_panapp_brand_with_tenant_name(self, read_state):
+    def test_replaces_default_panapp_brand_with_tenant_name(self, read_state, connect_db):
+        self.set_image_rows(connect_db)
         read_state.return_value = {
             "revision": 1,
             "data": {"perfilEmpresa": {"nombre": "Panadería PANAPP"}},
         }
 
-        catalog = public_catalog("tenant-id", "Panadería La Central")
+        catalog = public_catalog(str(uuid4()), "Panadería La Central")
 
         self.assertEqual(catalog["business"]["nombre"], "Panadería La Central")
+
+    @patch("saas_app.connect_db")
+    @patch("saas_app.read_tenant_state")
+    def test_includes_public_image_url_for_products_with_uploaded_images(self, read_state, connect_db):
+        image_updated = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        self.set_image_rows(connect_db, [("12", image_updated)])
+        read_state.return_value = {
+            "revision": 1,
+            "data": {"productos": [{"id": 12, "nombre": "Pan", "precio": 1000, "stock": 1}]},
+        }
+
+        catalog = public_catalog(str(uuid4()), "Panadería Central", "menu-token")
+
+        self.assertEqual(
+            catalog["products"][0]["image_url"],
+            f"/m/menu-token/api/products/12/image?v={int(image_updated.timestamp())}",
+        )
 
 
 class SmtpEmailTests(unittest.TestCase):
