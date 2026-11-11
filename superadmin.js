@@ -656,6 +656,30 @@ document.getElementById('tenantAdminForm').addEventListener('submit', async even
 });
 
 document.getElementById('refreshButton').addEventListener('click', refreshDashboard);
+document.getElementById('refreshSupportButton').addEventListener('click', loadSupportMessages);
+document.getElementById('refreshNoticesButton').addEventListener('click', loadMaintenanceNotices);
+document.getElementById('maintenanceNoticeForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const message = document.getElementById('maintenanceFormMessage');
+    const submit = form.querySelector('button[type="submit"]');
+    const values = Object.fromEntries(new FormData(form).entries());
+    message.classList.add('hidden');
+    submit.disabled = true;
+    try {
+        await api('/api/superadmin/maintenance-notices', {
+            method: 'POST',
+            body: JSON.stringify(values)
+        });
+        form.reset();
+        showMessage(message, 'Aviso global programado. Se mostrará a las panaderías antes de la fecha indicada; no suspenderá el acceso.');
+        await loadMaintenanceNotices();
+    } catch (error) {
+        showMessage(message, error.message || 'No se pudo programar el aviso.', true);
+    } finally {
+        submit.disabled = false;
+    }
+});
 document.getElementById('archivedTenantsButton').addEventListener('click', () => {
     archivedTenantsView = !archivedTenantsView;
     refreshDashboard();
