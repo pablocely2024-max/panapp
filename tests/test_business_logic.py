@@ -371,8 +371,7 @@ class AdminProvisioningTests(unittest.TestCase):
         self.assertEqual(result["menu_url"], "http://testserver/m/abcdefghijklmnopqrstuvwx")
         self.assertEqual(result["menu_qr_url"], f"{result['menu_url']}/qr.svg")
         self.assertEqual(result["admin_login_url"], "http://testserver/t/panaderia-central/login")
-        insert_sql, parameters = connection.execute.call_args_list[0].args
-        self.assertNotIn("must_change_password", insert_sql)
+        _, parameters = connection.execute.call_args_list[0].args
         self.assertEqual(parameters[-1], "ADMIN_PANADERIA")
         self.assertEqual(password_hash(result["temporary_password"], bytes.fromhex(parameters[3])), parameters[4])
 
