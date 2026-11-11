@@ -15,6 +15,7 @@ const otpInput = document.getElementById('authOtp');
 const resetPasswordInput = document.getElementById('authResetPassword');
 const resetConfirmInput = document.getElementById('authResetConfirm');
 let tenantConfigured = false;
+let activeTenant = null;
 let mode = 'sign-in';
 
 function updateSubmitState() {
@@ -102,6 +103,7 @@ async function postAuth(path, body) {
 }
 
 function redirectToAdmin(result) {
+    activeTenant = result.tenant || activeTenant;
     if (result.must_change_password) {
         emailInput.value = result.username || emailInput.value;
         instructions.textContent = 'Por seguridad, crea una contraseña personal para continuar al panel.';
@@ -110,7 +112,7 @@ function redirectToAdmin(result) {
         return;
     }
     const adminPath = globalLogin
-        ? `/t/${encodeURIComponent(result.tenant)}/admin`
+        ? `/t/${encodeURIComponent(activeTenant)}/admin`
         : tenantPath('/admin');
     window.location.replace(adminPath);
 }
@@ -129,6 +131,7 @@ async function checkSession() {
         const status = await response.json();
         if (!response.ok) throw new Error(status.detail || 'No se pudo consultar la sesión.');
         if (status.authenticated) {
+            activeTenant = status.tenant || null;
             if (status.must_change_password) {
                 emailInput.value = status.username || '';
                 instructions.textContent = 'Por seguridad, crea una contraseña personal para continuar al panel.';
@@ -165,7 +168,9 @@ form.addEventListener('submit', async event => {
             if (resetPasswordInput.value !== resetConfirmInput.value) {
                 throw new Error('Las contraseñas no coinciden.');
             }
-            const result = await postAuth('/api/security/password', {
+            const passwordPath = tenantBasePath || (activeTenant ? `/t/${encodeURIComponent(activeTenant)}` : '');
+            if (!passwordPath) throw new Error('No se pudo identificar la panadería de esta sesión.');
+            const result = await postAuth(`${passwordPath}/api/security/password`, {
                 new_password: resetPasswordInput.value
             });
             redirectToAdmin(result);
