@@ -756,13 +756,11 @@ function guardarNuevoPrecio(id) {
 function agregarElemento(tipo) {
     const siguienteId = lista => Math.max(0, ...lista.map(item => Number(item.id) || 0)) + 1;
     if (tipo === 'producto') {
-        const nombre = prompt('Nombre del producto:')?.trim();
-        if (!nombre) return;
-        const stock = Number(prompt('Unidades disponibles:', '0'));
-        const costoProd = Number(prompt('Costo de producción por unidad (COP):', '0'));
-        const precio = Number(prompt('Precio de venta (COP):', '0'));
-        if (![stock, costoProd, precio].every(valor => Number.isFinite(valor) && valor >= 0) || precio === 0) return alert('Revise stock, costo y precio; el precio debe ser mayor que cero.');
-        db.productos.push({ id: siguienteId(db.productos), nombre, stock, costoProd, precio });
+        const form = document.getElementById('productForm');
+        form.reset();
+        document.getElementById('productFormStatus').classList.add('hidden');
+        document.getElementById('productDialog').showModal();
+        return;
     } else if (tipo === 'insumo') {
         const nombre = prompt('Nombre del insumo:')?.trim();
         if (!nombre) return;
@@ -791,6 +789,148 @@ function agregarElemento(tipo) {
     guardarDatos();
     renderizarTodo();
 }
+
+async function optimizarImagenProducto(file) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        throw new Error('Selecciona una imagen JPG, PNG o WebP.');
+    }
+    if (file.size > 12 * 1024 * 1024) {
+        throw new Error('La imagen original no puede superar 12 MB.');
+    }
+
+    let bitmap;
+    let objectUrl;
+    try {
+        if (window.createImageBitmap) {
+            bitmap = await window.createImageBitmap(file);
+        } else {
+            objectUrl = URL.createObjectURL(file);
+            bitmap = await new Promise((resolve, reject) => {
+                const image = new Image();
+                image.onload = () => resolve(image);
+                image.onerror = () => reject(new Error('No se pudo leer la imagen seleccionada.'));
+                image.src = objectUrl;
+            });
+        }
+        const scale = Math.min(1, 1200 / bitmap.width, 900 / bitmap.height);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Este navegador no puede optimizar imágenes.');
+        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        const optimized = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.78));
+        if (!optimized || !['image/webp', 'image/jpeg', 'image/png'].includes(optimized.type)) {
+            throw new Error('No se pudo convertir la imagen a un formato compatible.');
+        }
+        if (optimized.size > 1_000_000) {
+            throw new Error('La imagen sigue siendo demasiado pesada. Elige una imagen más pequeña.');
+        }
+        return optimized;
+    } finally {
+        if (bitmap && typeof bitmap.close === 'function') bitmap.close();
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+    }
+}
+
+async function uploadProductImageFile(productId, file) {
+    const image = await optimizarImagenProducto(file);
+    const response = await fetch(tenantPath(`/api/products/${encodeURIComponent(String(productId))}/image`), {
+        method: 'PUT',
+        headers: { 'Content-Type': image.type },
+        body: image,
+        cache: 'no-store'
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || 'No se pudo guardar la imagen.');
+    if (!result.image_url) throw new Error('El servidor no confirmó la imagen guardada.');
+    return result.image_url;
+}
+
+document.getElementById('productForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const status = document.getElementById('productFormStatus');
+    const submit = form.querySelector('button[type="submit"]');
+    const values = new FormData(form);
+    const name = String(values.get('name') || '').trim();
+    const category = String(values.get('category') || '').trim();
+    const stock = Number(values.get('stock'));
+    const cost = Number(values.get('cost'));
+    const price = Number(values.get('price'));
+    if (!name || !category || ![stock, cost, price].every(Number.isFinite) || stock < 0 || cost < 0 || price <= 0) {
+        status.textContent = 'Revisa el nombre, la categoría, el stock, el costo y el precio.';
+        status.classList.remove('hidden');
+        return;
+    }
+
+    const product = {
+        id: Math.max(0, ...db.productos.map(item => Number(item.id) || 0)) + 1,
+        nombre: name,
+        categoria: category,
+        stock,
+        stockMinimo: 0,
+        costoProd: cost,
+        precio
+    };
+    const imageFile = values.get('image');
+    submit.disabled = true;
+    status.classList.add('hidden');
+    try {
+        if (imageFile instanceof File && imageFile.size > 0) {
+            status.textContent = 'Optimizando y guardando la imagen…';
+            status.classList.remove('hidden');
+            product.image_url = await uploadProductImageFile(product.id, imageFile);
+        }
+        db.productos.push(product);
+        guardarDatos();
+        renderizarTodo();
+        form.reset();
+        document.getElementById('productDialog').close();
+    } catch (error) {
+        status.textContent = error.message || 'No se pudo guardar el producto.';
+        status.classList.remove('hidden');
+    } finally {
+        submit.disabled = false;
+    }
+});
+
+['closeProductDialog', 'cancelProductDialog'].forEach(id => {
+    document.getElementById(id).addEventListener('click', () => {
+        document.getElementById('productDialog').close();
+    });
+});
+
+document.getElementById('tbProductosInv').addEventListener('click', event => {
+    const button = event.target.closest('[data-product-image]');
+    if (!button) return;
+    productoImagenSeleccionado = button.dataset.productImage;
+    document.getElementById('productImagePicker').click();
+});
+
+document.getElementById('productImagePicker').addEventListener('change', async event => {
+    const file = event.currentTarget.files?.[0];
+    const status = document.getElementById('productImageStatus');
+    const productId = productoImagenSeleccionado;
+    event.currentTarget.value = '';
+    productoImagenSeleccionado = null;
+    if (!file || !productId) return;
+
+    status.textContent = 'Optimizando y guardando la foto del producto…';
+    status.classList.remove('hidden');
+    status.classList.remove('text-red-700');
+    try {
+        const product = db.productos.find(item => String(item.id) === productId);
+        if (!product) throw new Error('No se encontró el producto seleccionado.');
+        product.image_url = await uploadProductImageFile(product.id, file);
+        guardarDatos();
+        renderizarTodo();
+        status.textContent = `Imagen de ${product.nombre} guardada.`;
+    } catch (error) {
+        status.textContent = error.message || 'No se pudo guardar la imagen.';
+        status.classList.add('text-red-700');
+    }
+});
 
 function alternarProveedor(id) {
     const proveedor = db.proveedores.find(item => item.id === id);
