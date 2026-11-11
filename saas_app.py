@@ -2579,7 +2579,7 @@ def tenant_routes(slug: str, route: str, request: Request):
         return asset("admin.html")
     if route in {"menu", "menu.html"}:
         return asset("menu.html")
-    if route in {"auth.js", "neon-auth.js", "admin.js", "menu.js", "styles.css"}:
+    if route in {"auth.js", "neon-auth.js", "admin.js", "menu.js", "theme.js", "styles.css"}:
         return asset(route)
     raise HTTPException(status_code=404, detail="Ruta no encontrada.")
 
