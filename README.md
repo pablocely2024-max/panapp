@@ -76,7 +76,7 @@ The migration preserves the existing `panapp_state` and the existing administrat
 
 PANAPP bakery-admin access uses its own backend password authentication and does not call Neon Auth from the browser. Neon PostgreSQL remains the app database; keep its connection string in the ignored `.env.local` file as `DATABASE_URL`.
 
-When Super Admin creates a bakery or configures its administrator, PANAPP generates a random temporary password and displays it with the administrator login link and the bakery's menu/QR links. Share the password securely; the administrator can log in immediately and change it later in **Seguridad**. PANAPP stores only its PBKDF2-HMAC-SHA256 hash and does not send passwords by email. No email code or SMTP setup is required to log in.
+When Super Admin creates a bakery or configures its administrator, PANAPP generates a random temporary password and displays it with the administrator login link and the bakery's menu/QR links. Share the password securely; the administrator can log in immediately and change it later in **Seguridad**. PANAPP stores only its PBKDF2-HMAC-SHA256 hash and does not send passwords by email.
 
 ## Owner provisioning and access
 
