@@ -1149,6 +1149,11 @@ def superadmin_script():
     return asset("superadmin.js")
 
 
+@app.get("/theme.js")
+def theme_script():
+    return asset("theme.js")
+
+
 @app.get("/styles.css")
 def styles():
     return asset("styles.css")
