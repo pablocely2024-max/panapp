@@ -21,10 +21,12 @@ from saas_app import (
     PublicOrderBody,
     TenantAdminBody,
     TenantCreateBody,
+    archive_tenant,
     provision_tenant_admin,
     public_catalog,
     resolve_public_hostname,
     require_tenant_admin,
+    restore_tenant,
     send_smtp_email,
     superadmin_tenants,
     subscription_revenue_report,
@@ -318,6 +320,7 @@ class SuperAdminTenantListTests(unittest.TestCase):
                 10000,
                 100000,
                 "admin@example.test",
+                False,
             )
         ]
         connect_db.return_value = connection
@@ -325,7 +328,67 @@ class SuperAdminTenantListTests(unittest.TestCase):
         tenants = superadmin_tenants({})
 
         self.assertEqual(tenants[0]["admin_email"], "admin@example.test")
-        self.assertEqual(connection.execute.call_args.args[1], ("ADMIN_PANADERIA",))
+        self.assertFalse(tenants[0]["archived"])
+        self.assertEqual(connection.execute.call_args.args[1], ("ADMIN_PANADERIA", False))
+
+    @patch("saas_app.connect_db")
+    def test_archived_filter_is_passed_to_tenant_query(self, connect_db):
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchall.return_value = []
+        connect_db.return_value = connection
+
+        self.assertEqual(superadmin_tenants({}, archived=True), [])
+        self.assertEqual(connection.execute.call_args.args[1], ("ADMIN_PANADERIA", True))
+
+
+class TenantArchivingTests(unittest.TestCase):
+    def request(self, path):
+        return Request({
+            "type": "http",
+            "method": "POST",
+            "path": path,
+            "headers": [(b"host", b"testserver")],
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("127.0.0.1", 1234),
+            "query_string": b"",
+        })
+
+    @patch("saas_app.tenant_by_slug")
+    @patch("saas_app.connect_db")
+    def test_archiving_deactivates_and_preserves_tenant_data(self, connect_db, tenant_by_slug):
+        tenant_id = uuid4()
+        tenant_by_slug.return_value = {"id": str(tenant_id)}
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connect_db.return_value = connection
+
+        result = archive_tenant("panaderia-central", self.request("/api/superadmin/tenants/panaderia-central/archive"), {})
+
+        self.assertEqual(result, {"slug": "panaderia-central", "archived": True})
+        statements = [call.args[0] for call in connection.execute.call_args_list]
+        self.assertIn("UPDATE panapp_tenants SET archived_at = NOW(), status = 'canceled' WHERE panaderia_id = %s", statements)
+        self.assertTrue(any("UPDATE panapp_subscriptions" in statement for statement in statements))
+        self.assertTrue(any("UPDATE panapp_sessions" in statement for statement in statements))
+        self.assertFalse(any("DELETE" in statement.upper() for statement in statements))
+
+    @patch("saas_app.tenant_by_slug")
+    @patch("saas_app.connect_db")
+    def test_restoring_only_unhides_the_tenant(self, connect_db, tenant_by_slug):
+        tenant_id = uuid4()
+        tenant_by_slug.return_value = {"id": str(tenant_id)}
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connect_db.return_value = connection
+
+        result = restore_tenant("panaderia-central", self.request("/api/superadmin/tenants/panaderia-central/restore"), {})
+
+        self.assertEqual(result, {"slug": "panaderia-central", "archived": False})
+        self.assertEqual(
+            connection.execute.call_args.args[0],
+            "UPDATE panapp_tenants SET archived_at = NULL WHERE panaderia_id = %s",
+        )
 
 
 class AdminProvisioningTests(unittest.TestCase):
