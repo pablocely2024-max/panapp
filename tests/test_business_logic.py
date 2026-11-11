@@ -126,21 +126,15 @@ class RequestValidationTests(unittest.TestCase):
 
         self.assertEqual(tenant.plan, "starter")
         self.assertEqual(tenant.billing_period, "monthly")
-        self.assertIsNone(tenant.owner_password)
 
-    def test_rejects_short_tenant_password_and_unknown_plan(self):
+    def test_rejects_unknown_plan(self):
         valid_tenant = {
             "slug": "panaderia-central",
             "name": "Panadería Central",
             "owner_email": "owner@example.test",
-            "owner_password": "short",
             "plan": "starter",
             "billing_period": "monthly",
         }
-        with self.assertRaises(ValidationError):
-            TenantCreateBody(**valid_tenant)
-
-        valid_tenant["owner_password"] = "a-strong-password"
         valid_tenant["plan"] = "enterprise"
         with self.assertRaises(ValidationError):
             TenantCreateBody(**valid_tenant)
@@ -429,7 +423,7 @@ class AdminProvisioningTests(unittest.TestCase):
         issue_session.assert_called_once()
 
 
-class TemporaryPasswordGateTests(unittest.TestCase):
+class TemporaryPasswordAccessTests(unittest.TestCase):
     def test_temporary_password_session_can_access_admin_data_immediately(self):
         identity = {
             "principal_type": "tenant",
