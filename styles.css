@@ -402,7 +402,6 @@ tr[hidden], .menu-product[hidden] { display: none !important; }
 .menu-skeleton-line.short { width: 42%; }
 .menu-skeleton-line.medium { width: 68%; }
 @keyframes skeleton-shimmer { to { background-position: -220% 0; } }
-@keyframes enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 button:not(:disabled):hover { transform: translateY(-1px); }
 button:not(:disabled):active { transform: translateY(0) scale(.98); }
 
