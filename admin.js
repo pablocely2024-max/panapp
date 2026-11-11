@@ -723,9 +723,8 @@ function renderizarTodo() {
     const productos = document.getElementById('tbProductosInv');
     productos.innerHTML = db.productos.map(producto => {
         const imagePath = tenantPath(`/api/products/${encodeURIComponent(String(producto.id))}/image`);
-        const imageUrl = typeof producto.image_url === 'string' && producto.image_url.startsWith(imagePath)
-            ? producto.image_url
-            : '';
+        const imageVersion = obtenerVersionImagenProducto(producto, imagePath);
+        const imageUrl = imageVersion ? `${imagePath}?v=${imageVersion}` : '';
         const image = imageUrl
             ? `<img class="product-thumbnail" src="${escapar(imageUrl)}" alt="Imagen de ${escapar(producto.nombre)}" loading="lazy">`
             : '<span class="product-thumbnail-placeholder" aria-hidden="true"><i class="fa-solid fa-image"></i></span>';
@@ -772,6 +771,24 @@ function renderizarTodo() {
 
     aplicarFiltro(filtroActual);
     if (document.getElementById('secInforme')?.classList.contains('block')) renderizarInforme();
+}
+
+function obtenerVersionImagenProducto(producto, imagePath) {
+    if (typeof producto.image_url !== 'string') return '';
+    try {
+        const savedUrl = new URL(producto.image_url, window.location.origin);
+        const endpoint = `/api/products/${encodeURIComponent(String(producto.id))}/image`;
+        const version = savedUrl.searchParams.get('v') || '';
+        return savedUrl.origin === window.location.origin
+            && savedUrl.pathname.endsWith(endpoint)
+            && imagePath.endsWith(endpoint)
+            && /^\d+$/.test(version)
+            ? version
+            : '';
+    } catch (error) {
+        console.warn('Se ignoró una URL de imagen de producto inválida.', error);
+        return '';
+    }
 }
 
 function claseEstado(estado) {
@@ -914,21 +931,24 @@ async function optimizarImagenProducto(file) {
                 image.src = objectUrl;
             });
         }
-        const scale = Math.min(1, 1200 / bitmap.width, 900 / bitmap.height);
+        let scale = Math.min(1, 1200 / bitmap.width, 900 / bitmap.height);
+        let quality = 0.82;
         const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
         const context = canvas.getContext('2d');
         if (!context) throw new Error('Este navegador no puede optimizar imágenes.');
-        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        const optimized = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.78));
-        if (!optimized || !['image/webp', 'image/jpeg', 'image/png'].includes(optimized.type)) {
-            throw new Error('No se pudo convertir la imagen a un formato compatible.');
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+            canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+            canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+            context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+            const optimized = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', quality));
+            if (!optimized || !['image/webp', 'image/jpeg', 'image/png'].includes(optimized.type)) {
+                throw new Error('No se pudo convertir la imagen a un formato compatible.');
+            }
+            if (optimized.size <= 1_000_000) return optimized;
+            if (attempt % 2 === 0) quality = Math.max(0.42, quality - 0.12);
+            else scale *= 0.8;
         }
-        if (optimized.size > 1_000_000) {
-            throw new Error('La imagen sigue siendo demasiado pesada. Elige una imagen más pequeña.');
-        }
-        return optimized;
+        throw new Error('No se pudo reducir la imagen a menos de 1 MB. Elige otra imagen.');
     } finally {
         if (bitmap && typeof bitmap.close === 'function') bitmap.close();
         if (objectUrl) URL.revokeObjectURL(objectUrl);
