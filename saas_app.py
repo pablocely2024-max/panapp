@@ -397,29 +397,6 @@ def initialize_database() -> None:
             WHERE used_at IS NULL
             """
         )
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS panapp_email_codes (
-                challenge_id UUID PRIMARY KEY,
-                code_hash TEXT NOT NULL,
-                user_id UUID NOT NULL REFERENCES panapp_users(user_id),
-                panaderia_id UUID NOT NULL REFERENCES panapp_tenants(panaderia_id),
-                email TEXT NOT NULL,
-                requester_ip TEXT NOT NULL,
-                attempts SMALLINT NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 5),
-                expires_at TIMESTAMPTZ NOT NULL,
-                used_at TIMESTAMPTZ,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS panapp_email_codes_pending_idx
-            ON panapp_email_codes (user_id, email, expires_at)
-            WHERE used_at IS NULL
-            """
-        )
         connection.execute("ALTER TABLE panapp_users ALTER COLUMN salt DROP NOT NULL")
         connection.execute("ALTER TABLE panapp_users ALTER COLUMN password_hash DROP NOT NULL")
         connection.execute("ALTER TABLE panapp_users ADD COLUMN IF NOT EXISTS auth_subject TEXT")
@@ -902,22 +879,6 @@ Si no esperabas esta invitación, ignora este mensaje.
     )
 
 
-def send_tenant_email_code(email: str, tenant_name: str, code: str) -> bool:
-    return send_smtp_email(
-        email,
-        f"Código de acceso a {tenant_name} · PANAPP",
-        f"""Hola:
-
-Tu código de verificación para {tenant_name} es:
-
-{code}
-
-Vence en 10 minutos y solo se puede usar una vez. Si no solicitaste este código, ignora este mensaje.
-PANAPP nunca te enviará una contraseña por correo.
-""",
-    )
-
-
 def deliver_admin_invitation(email: str, tenant_name: str, invitation_url: str) -> dict:
     try:
         sent = send_admin_invitation(email, tenant_name, invitation_url)
@@ -1029,15 +990,6 @@ def asset(name: str) -> FileResponse:
 class LoginBody(BaseModel):
     username: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=256)
-
-
-class EmailCodeRequestBody(BaseModel):
-    username: str = Field(min_length=3, max_length=254)
-
-
-class EmailCodeVerifyBody(EmailCodeRequestBody):
-    code: str = Field(pattern=r"^\d{6}$")
-    password: str = Field(min_length=12, max_length=128)
 
 
 class TenantCreateBody(BaseModel):
@@ -1426,33 +1378,6 @@ def provision_tenant_admin(
         "menu_qr_url": f"{menu_url}/qr.svg",
         "admin_login_url": f"{str(request.base_url).rstrip('/')}/t/{quote(tenant['slug'], safe='')}/login",
     }
-
-
-@app.post("/api/superadmin/tenants/{slug}/admin/recovery-code")
-def send_tenant_admin_recovery_code(
-    slug: str,
-    body: EmailCodeRequestBody,
-    request: Request,
-    _: Annotated[dict, Depends(require_superadmin)],
-):
-    require_same_origin(request)
-    tenant = tenant_by_slug(slug, must_be_active=False)
-    email = body.username.strip().lower()
-    with connect_db() as connection:
-        user = connection.execute(
-            """
-            SELECT 1 FROM panapp_users
-            WHERE panaderia_id = %s AND username = %s AND role = %s
-            """,
-            (uuid.UUID(tenant["id"]), email, ROLE_ADMIN),
-        ).fetchone()
-    if not user:
-        raise HTTPException(status_code=404, detail="Ese correo no está autorizado para esta panadería.")
-    return request_tenant_email_code(
-        EmailCodeRequestBody(username=email),
-        request,
-        slug,
-    )
 
 
 @app.patch("/api/superadmin/tenants/{slug}/status")
