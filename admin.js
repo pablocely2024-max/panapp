@@ -487,6 +487,7 @@ function guardarPerfilEmpresa(evento) {
     configuracionMenu.urlPublica = url;
     configuracionMenu.whatsapp = whatsapp;
     guardarDatos();
+    configurarEnlaceSoporte();
     actualizarPerfilEmpresa(true);
     renderizarTodo();
     generarQR();
@@ -579,6 +580,42 @@ function configurarEnlaceSoporte() {
     const text = `Hola, necesito ayuda con PANAPP. Panadería: ${perfilEmpresa.nombre || 'sin nombre configurado'}.`;
     link.href = `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
 }
+
+document.getElementById('supportForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const status = document.getElementById('supportStatus');
+    const submit = document.getElementById('sendSupportButton');
+    if (!servidorLocalActivo()) {
+        status.textContent = 'El envío al equipo requiere conexión con el servidor PANAPP.';
+        status.classList.add('text-red-700');
+        return;
+    }
+
+    submit.disabled = true;
+    status.textContent = 'Enviando tu mensaje…';
+    status.classList.remove('text-red-700');
+    try {
+        const response = await fetch(tenantPath('/api/support'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subject: document.getElementById('supportSubject').value.trim(),
+                message: document.getElementById('supportMessage').value.trim()
+            })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || `Error HTTP ${response.status}`);
+        form.reset();
+        status.textContent = 'Mensaje enviado a Super Admin. Puedes consultar su seguimiento con el equipo de PANAPP.';
+    } catch (requestError) {
+        console.error('No se pudo enviar el mensaje a soporte.', requestError);
+        status.textContent = requestError.message || 'No se pudo enviar el mensaje. Inténtalo de nuevo.';
+        status.classList.add('text-red-700');
+    } finally {
+        submit.disabled = false;
+    }
+});
 
 async function cargarNotificaciones(silencioso = false) {
     const loading = document.getElementById('notificationLoading');
