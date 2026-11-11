@@ -76,7 +76,7 @@ The migration preserves the existing `panapp_state` and the existing administrat
 
 PANAPP bakery-admin access uses its own backend password authentication and does not call Neon Auth from the browser. Neon PostgreSQL remains the app database; keep its connection string in the ignored `.env.local` file as `DATABASE_URL`.
 
-When Super Admin creates a bakery or configures its administrator, PANAPP generates a random temporary password and displays it with the administrator login link and the bakery's menu/QR links. Share the password securely; the administrator can log in immediately and change it later in **Seguridad**. PANAPP stores only its PBKDF2-HMAC-SHA256 hash and does not send passwords by email.
+When Super Admin creates a bakery or configures its administrator, PANAPP generates a random temporary password and displays it prominently with the administrator login link and the bakery's menu/QR links. Share the password securely; the administrator can log in immediately and change it later in **Seguridad**. To issue another password, configure the administrator again; the previous password cannot be recovered because PANAPP stores only its PBKDF2-HMAC-SHA256 hash and does not send passwords by email.
 
 ## Owner provisioning and access
 
@@ -89,7 +89,7 @@ PANAPP_SUPERADMIN_PASSWORD
 
 Use an email and a password of at least 12 characters. On first startup, PANAPP hashes the password and creates the owner if no matching owner exists. There is no public owner registration. Do not expose `.env.local` or commit secrets.
 
-Sign in at `/superadmin` to create a bakery tenant, provision its administrator, choose a monthly or annual plan, suspend/reactivate/cancel service, and record or review payments. Creating or reconfiguring an administrator generates a new temporary password and revokes existing sessions; deliver the password securely because it is shown only in the Super Admin result. The result also includes the admin login link, public menu link, and existing QR download link. Tenant accounts are scoped to their bakery. The global owner session and bakery session use separate `HttpOnly` cookies.
+Sign in at `/superadmin` to create a bakery tenant, provision its administrator, choose a monthly or annual plan, suspend/reactivate/cancel service, and record or review payments. Creating or reconfiguring an administrator generates a new temporary password and revokes existing sessions; deliver the password securely because it is shown only in the Super Admin result. The result also includes the admin login link, public menu link, and existing QR download link. The **Borrar panadería** action deactivates and hides a bakery without deleting its records; use **Ver panaderías dadas de baja** to restore it later. Tenant accounts are scoped to their bakery. The global owner session and bakery session use separate `HttpOnly` cookies.
 
 PANAPP records subscription plans and manually registered payment references; it does not connect to a payment processor or issue electronic tax invoices. MRR is an estimate based on active subscriptions, with annual plans prorated over 12 months. A tenant whose subscription period expires is suspended on its next tenant request.
 Recording a payment with status `paid` reactivates a non-canceled tenant and extends its current subscription by one billing period. Canceled tenants cannot be reactivated by payment entry.
