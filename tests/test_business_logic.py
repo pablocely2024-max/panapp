@@ -25,6 +25,7 @@ from saas_app import (
     provision_tenant_admin,
     public_catalog,
     resolve_public_hostname,
+    require_tenant_admin,
     send_smtp_email,
     send_tenant_admin_recovery_code,
     superadmin_tenants,
@@ -278,7 +279,7 @@ class IdleSessionTests(unittest.TestCase):
         connection.__enter__.return_value = connection
         connection.execute.side_effect = [
             MagicMock(fetchone=MagicMock(return_value=("tenant", uuid4(), uuid4(), "ADMIN_PANADERIA"))),
-            MagicMock(fetchone=MagicMock(return_value=("admin@example.test",))),
+            MagicMock(fetchone=MagicMock(return_value=("admin@example.test", False))),
         ]
         connect_db.return_value = connection
 
@@ -296,7 +297,7 @@ class IdleSessionTests(unittest.TestCase):
         connection.__enter__.return_value = connection
         connection.execute.side_effect = [
             MagicMock(fetchone=MagicMock(return_value=("tenant", uuid4(), uuid4(), "ADMIN_PANADERIA"))),
-            MagicMock(fetchone=MagicMock(return_value=("admin@example.test",))),
+            MagicMock(fetchone=MagicMock(return_value=("admin@example.test", False))),
         ]
         connect_db.return_value = connection
 
@@ -453,8 +454,33 @@ class AdminProvisioningTests(unittest.TestCase):
         self.assertEqual(result["admin_login_url"], "http://testserver/t/panaderia-central/login")
         insert_sql, parameters = connection.execute.call_args_list[0].args
         self.assertIn("must_change_password", insert_sql)
-        self.assertTrue(parameters[-1] == "ADMIN_PANADERIA")
+        self.assertEqual(parameters[-1], "ADMIN_PANADERIA")
         self.assertEqual(password_hash(result["temporary_password"], bytes.fromhex(parameters[3])), parameters[4])
+
+
+class TemporaryPasswordGateTests(unittest.TestCase):
+    def test_temporary_password_session_cannot_access_admin_data_before_change(self):
+        identity = {
+            "principal_type": "tenant",
+            "panaderia_id": "tenant-id",
+            "role": "ADMIN_PANADERIA",
+            "must_change_password": True,
+        }
+        request = Request({
+            "type": "http",
+            "method": "GET",
+            "path": "/t/panaderia-central/api/state",
+            "headers": [(b"host", b"testserver")],
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("127.0.0.1", 1234),
+            "query_string": b"",
+        })
+        with patch("saas_app.current_session", return_value=identity):
+            with self.assertRaises(HTTPException) as error:
+                require_tenant_admin(request, "tenant-id")
+            self.assertEqual(error.exception.status_code, 428)
+            self.assertIs(require_tenant_admin(request, "tenant-id", allow_password_change=True), identity)
 
 
 class NeonTokenVerificationTests(unittest.TestCase):
