@@ -748,9 +748,9 @@ def current_session(request: Request) -> dict | None:
         if row:
             username_row = connection.execute(
                 """
-                SELECT username, must_change_password FROM panapp_users WHERE user_id = %s
+                SELECT username FROM panapp_users WHERE user_id = %s
                 UNION ALL
-                SELECT username, FALSE FROM panapp_superadmins WHERE superadmin_id = %s
+                SELECT username FROM panapp_superadmins WHERE superadmin_id = %s
                 LIMIT 1
                 """,
                 (row[1], row[1]),
@@ -763,7 +763,6 @@ def current_session(request: Request) -> dict | None:
         "panaderia_id": str(row[2]) if row[2] else None,
         "role": row[3],
         "username": username_row[0] if username_row else None,
-        "must_change_password": bool(username_row[1]) if username_row else False,
     }
 
 
@@ -1702,7 +1701,6 @@ def tenant_security_status(slug: str, request: Request):
         ),
         "username": username,
         "role": identity["role"] if identity else None,
-        "must_change_password": bool(identity and identity["must_change_password"]),
         "tenant": {"slug": tenant["slug"], "name": tenant["name"]},
     }
 
@@ -1924,7 +1922,6 @@ def global_security_status(request: Request):
         "authenticated": authenticated,
         "tenant": tenant_slug,
         "username": identity["username"] if authenticated else None,
-        "must_change_password": bool(identity and authenticated and identity["must_change_password"]),
     }
 
 
@@ -1939,7 +1936,7 @@ def global_tenant_login(body: LoginBody, request: Request, response: Response):
         rows = connection.execute(
             """
             SELECT users.user_id, users.panaderia_id, users.salt, users.password_hash,
-                   users.role, tenants.slug, users.must_change_password
+                   users.role, tenants.slug
             FROM panapp_users users
             JOIN panapp_tenants tenants ON tenants.panaderia_id = users.panaderia_id
             WHERE users.username = %s
@@ -1977,7 +1974,6 @@ def global_tenant_login(body: LoginBody, request: Request, response: Response):
         "username": username,
         "role": user[4],
         "tenant": tenant["slug"],
-        "must_change_password": bool(user[6]),
     }
 
 
@@ -1991,7 +1987,7 @@ def tenant_login(slug: str, body: LoginBody, request: Request, response: Respons
     with connect_db() as connection:
         row = connection.execute(
             """
-            SELECT user_id, username, salt, password_hash, role, must_change_password
+            SELECT user_id, username, salt, password_hash, role
             FROM panapp_users WHERE panaderia_id = %s AND username = %s
             """,
             (uuid.UUID(tenant["id"]), body.username.strip().lower()),
@@ -2012,7 +2008,6 @@ def tenant_login(slug: str, body: LoginBody, request: Request, response: Respons
         "username": row[1],
         "role": row[4],
         "tenant": tenant["slug"],
-        "must_change_password": bool(row[5]),
     }
 
 
@@ -2133,7 +2128,7 @@ def tenant_password(slug: str, request: Request, response: Response, body: dict)
         ).fetchone()
         if not row:
             raise HTTPException(status_code=403, detail="No se pudo validar la cuenta administradora.")
-        if not identity["must_change_password"] and (
+        if (
             row[0] is None
             or row[1] is None
             or not hmac.compare_digest(password_hash(current_password, bytes.fromhex(row[0])), row[1])
