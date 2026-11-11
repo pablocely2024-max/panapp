@@ -1999,7 +1999,12 @@ def global_security_status(request: Request):
             ).fetchone()
         tenant_slug = row[0] if row else None
         authenticated = tenant_slug is not None
-    return {"authenticated": authenticated, "tenant": tenant_slug}
+    return {
+        "authenticated": authenticated,
+        "tenant": tenant_slug,
+        "username": identity["username"] if authenticated else None,
+        "must_change_password": bool(identity and authenticated and identity["must_change_password"]),
+    }
 
 
 def request_tenant_email_code(body: EmailCodeRequestBody, request: Request, slug: str | None = None) -> dict:
@@ -2168,8 +2173,8 @@ def verify_tenant_email_code(
             salt = secrets.token_bytes(32)
             connection.execute(
                 """
-                UPDATE panapp_users SET salt = %s, password_hash = %s
-                    , must_change_password = FALSE
+                UPDATE panapp_users
+                SET salt = %s, password_hash = %s, must_change_password = FALSE
                 WHERE user_id = %s AND panaderia_id = %s
                 """,
                 (
