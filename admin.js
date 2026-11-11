@@ -722,7 +722,6 @@ function renderizarTodo() {
 
     const productos = document.getElementById('tbProductosInv');
     productos.innerHTML = db.productos.map(producto => {
-        const imagePath = tenantPath(`/api/products/${encodeURIComponent(String(producto.id))}/image`);
         const image = producto.image_url
             ? `<img class="product-thumbnail" src="${escapar(producto.image_url)}" alt="Imagen de ${escapar(producto.nombre)}" loading="lazy">`
             : '<span class="product-thumbnail-placeholder" aria-hidden="true"><i class="fa-solid fa-image"></i></span>';
