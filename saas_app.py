@@ -1785,7 +1785,7 @@ def public_menu_page(menu_token: str):
 @app.get("/m/{menu_token}/api/menu")
 def public_token_menu(menu_token: str):
     tenant = tenant_by_menu_token(menu_token)
-    return public_catalog(tenant["id"], tenant["name"])
+    return public_catalog(tenant["id"], tenant["name"], tenant["menu_token"])
 
 
 @app.get("/t/{slug}/menu/qr.svg")
@@ -2340,7 +2340,6 @@ async def upload_product_image(slug: str, product_id: str, request: Request):
             """,
             (uuid.UUID(tenant["id"]), product_id, content_type, image_bytes),
         ).fetchone()
-    image_url = f"{tenantPath if False else ''}"
     return {
         "image_url": f"/t/{quote(slug, safe='')}/api/products/{quote(product_id, safe='')}/image?v={int(row[0].timestamp() * 1000)}"
     }
