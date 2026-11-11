@@ -367,10 +367,14 @@ def initialize_database() -> None:
                 password_hash TEXT,
                 role TEXT NOT NULL CHECK (role IN ('ADMIN_PANADERIA', 'MESERO')),
                 auth_subject TEXT,
+                must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE (panaderia_id, username)
             )
             """
+        )
+        connection.execute(
+            "ALTER TABLE panapp_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE"
         )
         connection.execute(
             """
@@ -1304,13 +1308,9 @@ def create_tenant(body: TenantCreateBody, request: Request, _: Annotated[dict, D
     subscription_id = uuid.uuid4()
     user_id = uuid.uuid4()
     menu_token = secrets.token_urlsafe(18)
-    if NEON_AUTH_URL:
-        salt = password_digest = None
-    else:
-        if not body.owner_password:
-            raise HTTPException(status_code=422, detail="Se requiere una contraseña para el administrador.")
-        salt = secrets.token_bytes(32)
-        password_digest = password_hash(body.owner_password, salt)
+    temporary_password = secrets.token_urlsafe(18)
+    salt = secrets.token_bytes(32)
+    password_digest = password_hash(temporary_password, salt)
     with connect_db() as connection:
         plan = connection.execute(
             "SELECT plan_id FROM panapp_plans WHERE code = %s AND active = TRUE",
@@ -1343,15 +1343,10 @@ def create_tenant(body: TenantCreateBody, request: Request, _: Annotated[dict, D
         connection.execute(
             """
             INSERT INTO panapp_users
-                (user_id, panaderia_id, username, salt, password_hash, role)
-            VALUES (%s, %s, %s, %s, %s, %s)
+                (user_id, panaderia_id, username, salt, password_hash, role, must_change_password)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
             """,
-            (user_id, tenant_id, email, salt.hex() if salt else None, password_digest, ROLE_ADMIN),
-        )
-        invitation_token = (
-            create_admin_invitation(connection, user_id, tenant_id, email)
-            if NEON_AUTH_URL
-            else None
+            (user_id, tenant_id, email, salt.hex(), password_digest, ROLE_ADMIN),
         )
         connection.execute(
             """
@@ -1360,24 +1355,17 @@ def create_tenant(body: TenantCreateBody, request: Request, _: Annotated[dict, D
             """,
             (tenant_id, Jsonb({"productos": [], "insumos": [], "proveedores": [], "encargos": [], "ventas": [], "mermas": []})),
         )
-    if invitation_token:
-        invitation_url = (
-            f"{str(request.base_url).rstrip('/')}/t/{quote(slug, safe='')}/login"
-            f"#invite={quote(invitation_token, safe='')}"
-        )
-        invitation = deliver_admin_invitation(email, body.name.strip(), invitation_url)
-    else:
-        invitation = {
-            "invitation_sent": False,
-            "invitation_message": "El administrador puede ingresar con la contraseña configurada.",
-        }
+    menu_url = tenant_menu_url(request, menu_token)
     return {
         "id": str(tenant_id),
         "slug": slug,
         "name": body.name.strip(),
         "status": "active",
-        "menu_token": menu_token,
-        **invitation,
+        "username": email,
+        "temporary_password": temporary_password,
+        "menu_url": menu_url,
+        "menu_qr_url": f"{menu_url}/qr.svg",
+        "admin_login_url": f"{str(request.base_url).rstrip('/')}/t/{quote(slug, safe='')}/login",
     }
 
 
@@ -1393,65 +1381,49 @@ def provision_tenant_admin(
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(status_code=422, detail="Correo del administrador inválido.")
     tenant = tenant_by_slug(slug, must_be_active=False)
-    if NEON_AUTH_URL:
-        salt = password_digest = None
-    else:
-        if not body.password:
-            raise HTTPException(status_code=422, detail="Se requiere una contraseña para el administrador.")
-        salt = secrets.token_bytes(32)
-        password_digest = password_hash(body.password, salt)
-    invitation_token = None
+    temporary_password = secrets.token_urlsafe(18)
+    salt = secrets.token_bytes(32)
+    password_digest = password_hash(temporary_password, salt)
     with connect_db() as connection:
         user = connection.execute(
             """
             INSERT INTO panapp_users
-                (user_id, panaderia_id, username, salt, password_hash, role)
-            VALUES (%s, %s, %s, %s, %s, %s)
+                (user_id, panaderia_id, username, salt, password_hash, role, must_change_password)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
             ON CONFLICT (panaderia_id, username) DO UPDATE
-            SET salt = COALESCE(EXCLUDED.salt, panapp_users.salt),
-                password_hash = COALESCE(EXCLUDED.password_hash, panapp_users.password_hash),
+            SET salt = EXCLUDED.salt,
+                password_hash = EXCLUDED.password_hash,
+                must_change_password = TRUE,
                 role = EXCLUDED.role
-            RETURNING user_id, auth_subject
+            RETURNING user_id
             """,
             (
                 uuid.uuid4(),
                 uuid.UUID(tenant["id"]),
                 email,
-                salt.hex() if salt else None,
+                salt.hex(),
                 password_digest,
                 ROLE_ADMIN,
             ),
         ).fetchone()
         if not user:
             raise HTTPException(status_code=500, detail="No se pudo autorizar el administrador.")
-        if user[1] is None and NEON_AUTH_URL:
-            connection.execute(
-                """
-                UPDATE panapp_invitations SET used_at = NOW()
-                WHERE user_id = %s AND used_at IS NULL
-                """,
-                (user[0],),
-            )
-            invitation_token = create_admin_invitation(connection, user[0], uuid.UUID(tenant["id"]), email)
-    if invitation_token is None and not NEON_AUTH_URL:
-        return {
-            "slug": tenant["slug"],
-            "username": email,
-            "invitation_sent": False,
-            "invitation_message": "El administrador puede ingresar con la contraseña configurada.",
-        }
-    if invitation_token is None:
-        return {
-            "slug": tenant["slug"],
-            "username": email,
-            "invitation_sent": False,
-            "invitation_message": "El correo ya está vinculado a una cuenta. Puede ingresar con su contraseña actual o usar recuperación.",
-        }
-    invitation_url = f"{str(request.base_url).rstrip('/')}/t/{quote(tenant['slug'], safe='')}/login#invite={quote(invitation_token, safe='')}"
+        connection.execute(
+            "UPDATE panapp_invitations SET used_at = NOW() WHERE user_id = %s AND used_at IS NULL",
+            (user[0],),
+        )
+        connection.execute(
+            "UPDATE panapp_sessions SET expires_at = NOW() WHERE principal_id = %s",
+            (user[0],),
+        )
+    menu_url = tenant_menu_url(request, tenant["menu_token"])
     return {
         "slug": tenant["slug"],
         "username": email,
-        **deliver_admin_invitation(email, tenant["name"], invitation_url),
+        "temporary_password": temporary_password,
+        "menu_url": menu_url,
+        "menu_qr_url": f"{menu_url}/qr.svg",
+        "admin_login_url": f"{str(request.base_url).rstrip('/')}/t/{quote(tenant['slug'], safe='')}/login",
     }
 
 
