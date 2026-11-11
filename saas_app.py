@@ -1028,6 +1028,36 @@ def public_catalog(tenant_id: str, tenant_name: str = "") -> dict:
     }
 
 
+MAX_PRODUCT_IMAGE_BYTES = 1_000_000
+
+
+def valid_product_image(data: bytes, content_type: str) -> bool:
+    signatures = {
+        "image/jpeg": lambda image: image.startswith(b"\xff\xd8\xff"),
+        "image/png": lambda image: image.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/webp": lambda image: len(image) >= 12 and image[:4] == b"RIFF" and image[8:12] == b"WEBP",
+    }
+    return len(data) <= MAX_PRODUCT_IMAGE_BYTES and content_type in signatures and signatures[content_type](data)
+
+
+def read_product_image(tenant_id: str, product_id: str) -> Response:
+    with connect_db() as connection:
+        row = connection.execute(
+            """
+            SELECT image_data, content_type FROM panapp_product_images
+            WHERE panaderia_id = %s AND product_id = %s
+            """,
+            (uuid.UUID(tenant_id), product_id),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Imagen de producto no encontrada.")
+    return Response(
+        content=row[0],
+        media_type=row[1],
+        headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff"},
+    )
+
+
 def asset(name: str) -> FileResponse:
     if name not in {"auth.html", "admin.html", "menu.html", "superadmin.html", "cookie-policy.html", "auth.js", "neon-auth.js", "admin.js", "menu.js", "superadmin.js", "theme.js", "styles.css"}:
         raise HTTPException(status_code=404, detail="Recurso no encontrado.")
@@ -2271,10 +2301,117 @@ def save_tenant_state(slug: str, request: Request, payload: dict):
     return {"ok": True, **write_tenant_state(tenant["id"], data)}
 
 
+@app.put("/t/{slug}/api/products/{product_id}/image")
+async def upload_product_image(slug: str, product_id: str, request: Request):
+    require_same_origin(request)
+    tenant = tenant_by_slug(slug)
+    require_tenant_admin(request, tenant["id"])
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", product_id):
+        raise HTTPException(status_code=422, detail="Identificador de producto inválido.")
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Usa una imagen JPG, PNG o WebP.")
+    try:
+        content_length = int(request.headers.get("content-length", "0"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Tamaño de imagen inválido.") from None
+    if content_length > MAX_PRODUCT_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="La imagen optimizada no puede superar 1 MB.")
+
+    image = bytearray()
+    async for chunk in request.stream():
+        if len(image) + len(chunk) > MAX_PRODUCT_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="La imagen optimizada no puede superar 1 MB.")
+        image.extend(chunk)
+    image_bytes = bytes(image)
+    if not valid_product_image(image_bytes, content_type):
+        raise HTTPException(status_code=422, detail="El archivo no contiene una imagen válida del tipo indicado.")
+
+    with connect_db() as connection:
+        row = connection.execute(
+            """
+            INSERT INTO panapp_product_images (panaderia_id, product_id, content_type, image_data)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (panaderia_id, product_id) DO UPDATE
+            SET content_type = EXCLUDED.content_type,
+                image_data = EXCLUDED.image_data,
+                updated_at = NOW()
+            RETURNING updated_at
+            """,
+            (uuid.UUID(tenant["id"]), product_id, content_type, image_bytes),
+        ).fetchone()
+    image_url = f"{tenantPath if False else ''}"
+    return {
+        "image_url": f"/t/{quote(slug, safe='')}/api/products/{quote(product_id, safe='')}/image?v={int(row[0].timestamp() * 1000)}"
+    }
+
+
+@app.get("/t/{slug}/api/products/{product_id}/image")
+def tenant_product_image(slug: str, product_id: str, request: Request):
+    tenant = tenant_by_slug(slug)
+    require_tenant_admin(request, tenant["id"])
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", product_id):
+        raise HTTPException(status_code=404, detail="Imagen de producto no encontrada.")
+    return read_product_image(tenant["id"], product_id)
+
+
+@app.get("/m/{menu_token}/api/products/{product_id}/image")
+def public_product_image(menu_token: str, product_id: str):
+    tenant = tenant_by_menu_token(menu_token)
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", product_id):
+        raise HTTPException(status_code=404, detail="Imagen de producto no encontrada.")
+    return read_product_image(tenant["id"], product_id)
+
+
+@app.post("/t/{slug}/api/support")
+def create_support_message(slug: str, body: SupportMessageBody, request: Request):
+    require_same_origin(request)
+    tenant = tenant_by_slug(slug)
+    identity = require_tenant_admin(request, tenant["id"])
+    subject = body.subject.strip()
+    message = body.message.strip()
+    if not subject or not message:
+        raise HTTPException(status_code=422, detail="Escribe un asunto y un mensaje.")
+    with connect_db() as connection:
+        connection.execute(
+            """
+            INSERT INTO panapp_support_messages
+                (support_message_id, panaderia_id, sender_username, subject, message)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (uuid.uuid4(), uuid.UUID(tenant["id"]), identity["username"], subject, message),
+        )
+    return {"ok": True}
+
+
+@app.get("/t/{slug}/api/notifications")
+def tenant_notifications(slug: str, request: Request):
+    tenant = tenant_by_slug(slug)
+    require_tenant_admin(request, tenant["id"])
+    with connect_db() as connection:
+        rows = connection.execute(
+            """
+            SELECT notice_id, title, message, scheduled_at
+            FROM panapp_maintenance_notices
+            WHERE active = TRUE AND scheduled_at > NOW()
+            ORDER BY scheduled_at
+            """
+        ).fetchall()
+    return [
+        {
+            "id": str(row[0]),
+            "title": row[1],
+            "message": row[2],
+            "scheduled_at": row[3].isoformat(),
+        }
+        for row in rows
+    ]
+
+
 @app.get("/t/{slug}/api/menu")
 def tenant_menu(slug: str):
     tenant = tenant_by_slug(slug)
-    return public_catalog(tenant["id"], tenant["name"])
+    return public_catalog(tenant["id"], tenant["name"], tenant["menu_token"])
 
 
 @app.get("/t/{slug}/auth.html")
