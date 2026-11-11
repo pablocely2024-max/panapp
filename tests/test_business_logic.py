@@ -32,6 +32,7 @@ from saas_app import (
     global_tenant_login,
     tenant_menu_qr,
     tenant_menu_url,
+    tenant_password,
     validate_slug,
     hash_token,
     verify_legacy_tenant_credentials,
@@ -442,6 +443,61 @@ class TemporaryPasswordAccessTests(unittest.TestCase):
         })
         with patch("saas_app.current_session", return_value=identity):
             self.assertIs(require_tenant_admin(request, "tenant-id"), identity)
+
+    @patch("saas_app.issue_session")
+    @patch("saas_app.require_tenant_admin")
+    @patch("saas_app.tenant_by_slug")
+    @patch("saas_app.connect_db")
+    def test_admin_can_change_the_temporary_password_after_login(
+        self,
+        connect_db,
+        tenant_by_slug,
+        require_admin,
+        issue_session,
+    ):
+        from saas_app import password_hash
+        import secrets
+
+        tenant_id, user_id = uuid4(), uuid4()
+        salt = secrets.token_bytes(32)
+        tenant = {"id": str(tenant_id), "slug": "panaderia-central"}
+        identity = {
+            "principal_id": str(user_id),
+            "panaderia_id": str(tenant_id),
+            "role": "ADMIN_PANADERIA",
+            "username": "admin@example.test",
+        }
+        tenant_by_slug.return_value = tenant
+        require_admin.return_value = identity
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchone.return_value = (
+            salt.hex(),
+            password_hash("temporary-password", salt),
+        )
+        connect_db.return_value = connection
+        request = Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/t/panaderia-central/api/security/password",
+            "headers": [(b"host", b"testserver")],
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("127.0.0.1", 1234),
+            "query_string": b"",
+        })
+
+        result = tenant_password(
+            "panaderia-central",
+            request,
+            Response(),
+            {"current_password": "temporary-password", "new_password": "new-client-password"},
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["tenant"], "panaderia-central")
+        self.assertEqual(connection.execute.call_count, 3)
+        issue_session.assert_called_once()
 
 
 class NeonTokenVerificationTests(unittest.TestCase):
