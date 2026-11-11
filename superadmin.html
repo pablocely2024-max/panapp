@@ -120,8 +120,11 @@
 
             <section class="rounded-2xl border border-amber-100 bg-white p-6 shadow-sm sm:p-8">
                 <div class="flex flex-wrap items-end justify-between gap-3">
-                    <div><h2 class="font-display text-2xl text-slate-900">Tenants</h2><p class="mt-1 text-sm text-slate-500">Acceso por `/t/{slug}` o por subdominio configurado.</p></div>
-                    <button id="refreshButton" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold hover:bg-slate-50">Actualizar</button>
+                    <div><h2 id="tenantListTitle" class="font-display text-2xl text-slate-900">Panaderías</h2><p class="mt-1 text-sm text-slate-500">Acceso por `/t/{slug}` o por subdominio configurado.</p></div>
+                    <div class="flex flex-wrap gap-2">
+                        <button id="archivedTenantsButton" class="rounded-xl border border-amber-200 px-4 py-2.5 text-sm font-bold text-amber-900 hover:bg-amber-50">Ver panaderías dadas de baja</button>
+                        <button id="refreshButton" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold hover:bg-slate-50">Actualizar</button>
+                    </div>
                 </div>
                 <p id="tenantListError" class="hidden mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800" role="alert"></p>
                 <div class="mt-5 overflow-x-auto">
@@ -160,7 +163,7 @@
                 <div><p class="text-xs font-bold uppercase tracking-[.18em] text-amber-700">Acceso de panadería</p><h2 id="tenantAdminTitle" class="mt-2 font-display text-2xl text-slate-900">Administrador</h2></div>
                 <button id="closeTenantAdminDialog" type="button" class="rounded-full px-3 py-2 text-slate-500 hover:bg-slate-100" aria-label="Cerrar configuración">✕</button>
             </div>
-            <p class="mt-3 text-sm leading-6 text-slate-600">Al guardar se genera una contraseña temporal nueva y se revoca el acceso anterior. Entrégala al cliente junto con el enlace de administración; podrá cambiarla después desde Seguridad en su panel. Aquí también encontrarás el enlace de su menú QR.</p>
+            <p class="mt-3 text-sm leading-6 text-slate-600">Al guardar se genera y muestra una contraseña temporal nueva, y se revoca la anterior. Entrégala al cliente junto con el enlace de administración; podrá cambiarla después desde Seguridad en su panel. Aquí también encontrarás el enlace de su menú QR. Por seguridad, la contraseña anterior no se puede recuperar: vuelve a generarla para obtener otra.</p>
             <div id="tenantAdminMessage" class="hidden mt-4 rounded-xl px-4 py-3 text-sm" role="status"></div>
             <form id="tenantAdminForm" class="mt-5 space-y-4">
                 <label class="block text-sm font-semibold">Correo del administrador
@@ -169,12 +172,12 @@
                 <p class="text-xs leading-5 text-slate-500">Solo el correo autorizado para esta panadería podrá iniciar sesión. No se modifican cuentas de otras panaderías.</p>
                 <div class="flex flex-wrap justify-end gap-3">
                     <button id="cancelTenantAdminDialog" type="button" class="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancelar</button>
-                    <button class="rounded-xl bg-amber-700 px-5 py-3 text-sm font-bold text-white hover:bg-amber-800">Guardar administrador</button>
+                    <button class="rounded-xl bg-amber-700 px-5 py-3 text-sm font-bold text-white hover:bg-amber-800">Guardar y mostrar contraseña nueva</button>
                 </div>
             </form>
-            <p class="mt-3 text-xs leading-5 text-slate-500">La contraseña se muestra aquí una sola vez. Guárdala y entrégala al cliente de forma segura.</p>
+            <p class="mt-3 text-xs leading-5 text-slate-500">La nueva contraseña aparece destacada después de guardar. PANAPP no guarda contraseñas en texto legible.</p>
         </section>
     </dialog>
-    <script src="/superadmin.js?v=7" defer></script>
+    <script src="/superadmin.js?v=8" defer></script>
 </body>
 </html>
