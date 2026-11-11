@@ -6,7 +6,10 @@ const menuState = {
     query: '',
     products: [],
     phone: '',
-    selectedProduct: null
+    selectedProduct: null,
+    revision: null,
+    loaded: false,
+    loading: false
 };
 
 const categoryMap = [
@@ -57,8 +60,22 @@ function createCategoryButton(category) {
 
 function createProductCard(product, currency) {
     const card = document.createElement('article');
-    card.className = 'rounded-2xl border border-amber-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md';
+    card.className = 'rounded-2xl border border-amber-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md menu-product-card';
 
+    const imageFrame = document.createElement('div');
+    imageFrame.className = 'menu-product-image';
+    if (product.image_url) {
+        const image = document.createElement('img');
+        image.src = product.image_url;
+        image.alt = product.nombre ? `Imagen de ${product.nombre}` : 'Imagen del producto';
+        image.loading = 'lazy';
+        image.addEventListener('error', () => {
+            imageFrame.replaceChildren(createImagePlaceholder());
+        }, { once: true });
+        imageFrame.append(image);
+    } else {
+        imageFrame.append(createImagePlaceholder());
+    }
     const category = document.createElement('span');
     category.className = 'text-xs font-bold uppercase tracking-wider text-amber-700';
     category.textContent = publicCategory(product.categoria);
@@ -85,8 +102,16 @@ function createProductCard(product, currency) {
     order.addEventListener('click', () => openOrderDialog(product, currency));
     footer.append(order);
 
-    card.append(category, name, price, footer);
+    card.append(imageFrame, category, name, price, footer);
     return card;
+}
+
+function createImagePlaceholder() {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'menu-product-image-placeholder';
+    placeholder.setAttribute('aria-hidden', 'true');
+    placeholder.innerHTML = '<i class="fa-solid fa-bread-slice"></i>';
+    return placeholder;
 }
 
 function renderMenu(currency = 'COP') {
@@ -128,22 +153,37 @@ function updateBusiness(business) {
 }
 
 async function loadMenu() {
+    if (menuState.loading) return;
+    menuState.loading = true;
     const error = document.getElementById('menuError');
+    const productsContainer = document.getElementById('menuProducts');
     try {
         const response = await fetch(tenantPath('/api/menu'), { cache: 'no-store' });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || `Error HTTP ${response.status}`);
-        menuState.products = Array.isArray(result.products) ? result.products : [];
-        menuState.phone = result.whatsapp || '';
-        updateBusiness(result.business || {});
-        renderMenu(result.business?.moneda || 'COP');
+        const changed = !menuState.loaded || result.revision !== menuState.revision;
+        if (changed) {
+            menuState.products = Array.isArray(result.products) ? result.products : [];
+            menuState.phone = result.whatsapp || '';
+            menuState.revision = result.revision ?? null;
+            updateBusiness(result.business || {});
+            renderMenu(result.business?.moneda || 'COP');
+        }
+        menuState.loaded = true;
+        productsContainer.setAttribute('aria-busy', 'false');
         error.classList.add('hidden');
-        document.getElementById('menuUpdatedAt').textContent = 'Catálogo sincronizado con la panadería.';
+        document.getElementById('menuUpdatedAt').textContent = `Menú actualizado en vivo · ${new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date())}`;
     } catch (requestError) {
+        if (!menuState.loaded) {
+            productsContainer.replaceChildren();
+            productsContainer.setAttribute('aria-busy', 'false');
+        }
         error.textContent = 'No se pudo cargar el menú. Comprueba tu conexión e inténtalo de nuevo.';
         error.classList.remove('hidden');
         document.getElementById('menuUpdatedAt').textContent = 'No fue posible actualizar el catálogo.';
         console.error('Error al consultar el menú público.', requestError);
+    } finally {
+        menuState.loading = false;
     }
 }
 
@@ -218,4 +258,4 @@ document.getElementById('closeOrderDialog').addEventListener('click', () => {
 });
 updateOrderTypeFields();
 loadMenu();
-window.setInterval(loadMenu, 15_000);
+window.setInterval(loadMenu, 3_000);
