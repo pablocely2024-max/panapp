@@ -3,6 +3,7 @@ const tenantBasePath = window.location.pathname.match(/^\/t\/[^/]+/)?.[0] || '';
 const tenantPath = path => `${tenantBasePath}${path}`;
 const STORAGE_KEY = `panapp-datos-v1:${window.location.host}:${tenantBasePath || window.location.pathname}`;
 const configuracionInicial = { urlPublica: '', whatsapp: '' };
+const SUPPORT_WHATSAPP_NUMBER = '573208964745';
 const perfilEmpresaInicial = {
     id: `PAN-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
     nombre: 'Panadería PANAPP',
@@ -105,7 +106,9 @@ let escriturasPendientes = 0;
 let colaEscrituraServidor = Promise.resolve();
 let sincronizandoServidor = false;
 let intervaloSincronizacion = null;
+let intervaloNotificaciones = null;
 let temporizadorInactividad = null;
+let productoImagenSeleccionado = null;
 const TIEMPO_INACTIVIDAD_MS = 5 * 60 * 1000;
 
 function registrarActividadAdmin() {
@@ -575,9 +578,14 @@ async function inicializarApp() {
     iniciarGrafica();
     actualizarEstadoServidor(servidorLocalActivo() ? 'Conectando a PostgreSQL…' : 'Solo almacenamiento de este navegador', false);
     await sincronizarDesdeServidor(true);
+    await cargarNotificaciones();
+    configurarEnlaceSoporte();
     if (servidorLocalActivo()) registrarActividadAdmin();
     if (servidorLocalActivo() && !intervaloSincronizacion) {
         intervaloSincronizacion = window.setInterval(() => sincronizarDesdeServidor(), 2000);
+    }
+    if (servidorLocalActivo() && !intervaloNotificaciones) {
+        intervaloNotificaciones = window.setInterval(() => cargarNotificaciones(true), 30000);
     }
 }
 
@@ -614,12 +622,19 @@ function renderizarTodo() {
     document.getElementById('fechaInforme').textContent = `Informe actualizado: ${new Intl.DateTimeFormat('es-CO', { dateStyle: 'long' }).format(new Date())}. Valores en ${perfilEmpresa.moneda}.`;
 
     const productos = document.getElementById('tbProductosInv');
-    productos.innerHTML = db.productos.map(producto => `
+    productos.innerHTML = db.productos.map(producto => {
+        const imagePath = tenantPath(`/api/products/${encodeURIComponent(String(producto.id))}/image`);
+        const image = producto.image_url
+            ? `<img class="product-thumbnail" src="${escapar(producto.image_url)}" alt="Imagen de ${escapar(producto.nombre)}" loading="lazy">`
+            : '<span class="product-thumbnail-placeholder" aria-hidden="true"><i class="fa-solid fa-image"></i></span>';
+        return `
         <tr class="hover:bg-slate-50">
             <td class="p-3 font-bold text-slate-700">${escapar(producto.nombre)}</td>
+            <td class="p-3"><div class="product-image-cell">${image}<button type="button" class="product-image-button" data-product-image="${escapar(String(producto.id))}">${producto.image_url ? 'Cambiar foto' : 'Agregar foto'}</button></div></td>
             <td class="p-3"><span class="stock-pill ${producto.stock <= 15 ? 'stock-low' : ''}">${Number(producto.stock) || 0} un.</span></td>
             <td class="p-3 text-red-600 font-medium">${formatoCOP(producto.costoProd)}</td>
-        </tr>`).join('');
+        </tr>`;
+    }).join('');
 
     document.getElementById('tbInsumosInv').innerHTML = db.insumos.map(insumo => `
         <tr class="hover:bg-slate-50">
