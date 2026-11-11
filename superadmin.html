@@ -6,11 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
     <title>Super Admin · PANAPP</title>
+    <script src="/theme.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles.css?v=2">
 </head>
 <body class="min-h-screen bg-[#fffaf2] font-sans text-slate-800">
     <main class="mx-auto max-w-7xl px-5 py-10 sm:px-8">
@@ -19,7 +20,10 @@
                 <span class="grid h-12 w-12 place-items-center rounded-2xl bg-slate-900 text-lg font-black text-amber-300">P</span>
                 <span><strong class="block text-xl font-extrabold">PANAPP</strong><small class="text-xs font-bold uppercase tracking-[.18em] text-amber-700">Control de plataforma</small></span>
             </a>
-            <button id="logoutButton" class="hidden rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">Cerrar sesión</button>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" data-theme-toggle class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">🌙 Modo oscuro</button>
+                <button id="logoutButton" class="hidden rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">Cerrar sesión</button>
+            </div>
         </header>
 
         <section id="loginPanel" class="mx-auto max-w-md rounded-3xl border border-amber-100 bg-white p-7 shadow-xl sm:p-10">

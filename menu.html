@@ -7,6 +7,7 @@
     <meta name="theme-color" content="#fffaf2">
     <meta name="description" content="Consulta el menú y los productos disponibles de la panadería.">
     <title>Menú de hoy · PANAPP</title>
+    <script src="/theme.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -31,9 +32,12 @@
                 <span class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-600 text-lg text-white"><i class="fa-solid fa-wheat-awn" aria-hidden="true"></i></span>
                 <span class="min-w-0"><strong id="menuBusinessName" class="block truncate text-lg font-extrabold text-slate-900">Panadería PANAPP</strong><small id="menuBusinessTagline" class="block truncate text-xs text-slate-500">Recién hecho para ti</small></span>
             </a>
-            <a id="menuWhatsApp" href="#" target="_blank" rel="noopener noreferrer" class="hidden shrink-0 rounded-full bg-green-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-800">
-                <i class="fa-brands fa-whatsapp mr-1" aria-hidden="true"></i> Pedir
-            </a>
+            <div class="flex shrink-0 items-center gap-2">
+                <button id="menuThemeToggle" type="button" data-theme-toggle data-theme-compact="true" class="grid h-10 w-10 place-items-center rounded-full border border-amber-200 bg-white text-lg" aria-label="Activar modo oscuro">🌙</button>
+                <a id="menuWhatsApp" href="#" target="_blank" rel="noopener noreferrer" class="hidden shrink-0 rounded-full bg-green-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-800">
+                    <i class="fa-brands fa-whatsapp mr-1" aria-hidden="true"></i> Pedir
+                </a>
+            </div>
         </div>
     </header>
 
@@ -59,7 +63,11 @@
                 </label>
             </div>
             <nav id="menuCategories" class="mt-6 flex gap-2 overflow-x-auto pb-2" aria-label="Filtrar por categoría"></nav>
-            <div id="menuProducts" class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"></div>
+            <div id="menuProducts" class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Productos" aria-busy="true">
+                <article class="menu-skeleton-card" aria-hidden="true"><span class="menu-skeleton-image"></span><span class="menu-skeleton-line short"></span><span class="menu-skeleton-line"></span><span class="menu-skeleton-line medium"></span></article>
+                <article class="menu-skeleton-card" aria-hidden="true"><span class="menu-skeleton-image"></span><span class="menu-skeleton-line short"></span><span class="menu-skeleton-line"></span><span class="menu-skeleton-line medium"></span></article>
+                <article class="menu-skeleton-card" aria-hidden="true"><span class="menu-skeleton-image"></span><span class="menu-skeleton-line short"></span><span class="menu-skeleton-line"></span><span class="menu-skeleton-line medium"></span></article>
+            </div>
             <p id="menuEmpty" class="hidden rounded-2xl border border-dashed border-amber-200 bg-white p-8 text-center text-slate-600">No encontramos productos disponibles con esa búsqueda.</p>
             <p id="menuError" class="hidden rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800" role="alert"></p>
         </section>
@@ -109,6 +117,6 @@
             <p class="text-xs leading-5 text-slate-500">El local confirmará disponibilidad y tiempo de entrega por WhatsApp.</p>
         </form>
     </dialog>
-    <script src="menu.js" defer></script>
+    <script src="menu.js?v=2" defer></script>
 </body>
 </html>
