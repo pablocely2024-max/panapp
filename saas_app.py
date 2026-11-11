@@ -1557,6 +1557,137 @@ def restore_tenant(slug: str, request: Request, _: Annotated[dict, Depends(requi
     return {"slug": slug, "archived": False}
 
 
+@app.get("/api/superadmin/support/messages")
+def list_support_messages(_: Annotated[dict, Depends(require_superadmin)]):
+    with connect_db() as connection:
+        rows = connection.execute(
+            """
+            SELECT message.support_message_id, tenant.name, tenant.slug, message.sender_username,
+                   message.subject, message.message, message.status, message.created_at
+            FROM panapp_support_messages message
+            JOIN panapp_tenants tenant ON tenant.panaderia_id = message.panaderia_id
+            ORDER BY CASE message.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+                     message.created_at DESC
+            """
+        ).fetchall()
+    return [
+        {
+            "id": str(row[0]),
+            "bakery_name": row[1],
+            "slug": row[2],
+            "sender": row[3],
+            "subject": row[4],
+            "message": row[5],
+            "status": row[6],
+            "created_at": row[7].isoformat(),
+        }
+        for row in rows
+    ]
+
+
+@app.patch("/api/superadmin/support/messages/{message_id}")
+def update_support_message(
+    message_id: uuid.UUID,
+    body: SupportMessageStatusBody,
+    request: Request,
+    _: Annotated[dict, Depends(require_superadmin)],
+):
+    require_same_origin(request)
+    with connect_db() as connection:
+        row = connection.execute(
+            """
+            UPDATE panapp_support_messages
+            SET status = %s, updated_at = NOW()
+            WHERE support_message_id = %s
+            RETURNING support_message_id
+            """,
+            (body.status, message_id),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Mensaje de soporte no encontrado.")
+    return {"id": str(row[0]), "status": body.status}
+
+
+def maintenance_datetime_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=ZoneInfo("America/Bogota"))
+    return value.astimezone(timezone.utc)
+
+
+@app.get("/api/superadmin/maintenance-notices")
+def list_maintenance_notices(_: Annotated[dict, Depends(require_superadmin)]):
+    with connect_db() as connection:
+        rows = connection.execute(
+            """
+            SELECT notice_id, title, message, scheduled_at
+            FROM panapp_maintenance_notices
+            WHERE active = TRUE
+            ORDER BY scheduled_at
+            """
+        ).fetchall()
+    return [
+        {
+            "id": str(row[0]),
+            "title": row[1],
+            "message": row[2],
+            "scheduled_at": row[3].isoformat(),
+        }
+        for row in rows
+    ]
+
+
+@app.post("/api/superadmin/maintenance-notices")
+def create_maintenance_notice(
+    body: MaintenanceNoticeBody,
+    request: Request,
+    _: Annotated[dict, Depends(require_superadmin)],
+):
+    require_same_origin(request)
+    title = body.title.strip()
+    message = body.message.strip()
+    if not title or not message:
+        raise HTTPException(status_code=422, detail="Escribe un título y una descripción para el aviso.")
+    scheduled_at = maintenance_datetime_utc(body.scheduled_at)
+    if scheduled_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=422, detail="La fecha del aviso debe estar en el futuro.")
+    notice_id = uuid.uuid4()
+    with connect_db() as connection:
+        connection.execute(
+            """
+            INSERT INTO panapp_maintenance_notices (notice_id, title, message, scheduled_at)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (notice_id, title, message, scheduled_at),
+        )
+    return {
+        "id": str(notice_id),
+        "title": title,
+        "message": message,
+        "scheduled_at": scheduled_at.isoformat(),
+    }
+
+
+@app.delete("/api/superadmin/maintenance-notices/{notice_id}")
+def cancel_maintenance_notice(
+    notice_id: uuid.UUID,
+    request: Request,
+    _: Annotated[dict, Depends(require_superadmin)],
+):
+    require_same_origin(request)
+    with connect_db() as connection:
+        row = connection.execute(
+            """
+            UPDATE panapp_maintenance_notices SET active = FALSE
+            WHERE notice_id = %s AND active = TRUE
+            RETURNING notice_id
+            """,
+            (notice_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Aviso de mantenimiento no encontrado.")
+    return {"id": str(row[0]), "active": False}
+
+
 @app.post("/api/superadmin/tenants/{slug}/payments")
 def register_payment(slug: str, body: PaymentBody, request: Request, _: Annotated[dict, Depends(require_superadmin)]):
     require_same_origin(request)
