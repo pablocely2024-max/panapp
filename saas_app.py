@@ -661,7 +661,8 @@ def tenant_by_slug(slug: str, *, must_be_active: bool = True) -> dict:
         row = connection.execute(
             """
             SELECT tenant.panaderia_id, tenant.slug, tenant.name, tenant.status, tenant.created_at, tenant.menu_token,
-                   subscription.status, subscription.current_period_end
+                   subscription.status, subscription.current_period_end,
+                   tenant.archived_at IS NOT NULL
             FROM panapp_tenants tenant
             LEFT JOIN LATERAL (
                 SELECT status, current_period_end
@@ -684,8 +685,11 @@ def tenant_by_slug(slug: str, *, must_be_active: bool = True) -> dict:
         "menu_token": row[5],
         "subscription_status": row[6],
         "subscription_ends_at": row[7].isoformat() if row[7] else None,
+        "archived": row[8],
     }
     if must_be_active:
+        if tenant["archived"]:
+            raise HTTPException(status_code=423, detail="Esta panadería está dada de baja.")
         if tenant["status"] != "active":
             raise HTTPException(status_code=423, detail="Esta panadería no tiene el servicio activo.")
         if row[6] != "active" or row[7] is None or row[7] <= datetime.now(timezone.utc):
@@ -1381,6 +1385,8 @@ def provision_tenant_admin(
 def update_tenant_status(slug: str, body: TenantStatusBody, request: Request, _: Annotated[dict, Depends(require_superadmin)]):
     require_same_origin(request)
     tenant = tenant_by_slug(slug, must_be_active=False)
+    if tenant["archived"] and body.status == "active":
+        raise HTTPException(status_code=409, detail="Restaura la panadería antes de volver a activarla.")
     with connect_db() as connection:
         connection.execute(
             "UPDATE panapp_tenants SET status = %s WHERE panaderia_id = %s",
@@ -1459,7 +1465,7 @@ def restore_tenant(slug: str, request: Request, _: Annotated[dict, Depends(requi
 def register_payment(slug: str, body: PaymentBody, request: Request, _: Annotated[dict, Depends(require_superadmin)]):
     require_same_origin(request)
     tenant = tenant_by_slug(slug, must_be_active=False)
-    if tenant["status"] == "canceled":
+    if tenant["archived"] or tenant["status"] == "canceled":
         raise HTTPException(status_code=409, detail="No se pueden registrar pagos para una suscripción cancelada.")
     with connect_db() as connection:
         subscription = connection.execute(
