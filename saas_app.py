@@ -309,11 +309,13 @@ def initialize_database() -> None:
                 name TEXT NOT NULL,
                 status TEXT NOT NULL CHECK (status IN ('active', 'suspended', 'canceled')),
                 menu_token TEXT UNIQUE,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                archived_at TIMESTAMPTZ
             )
             """
         )
         connection.execute("ALTER TABLE panapp_tenants ADD COLUMN IF NOT EXISTS menu_token TEXT")
+        connection.execute("ALTER TABLE panapp_tenants ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ")
         connection.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS panapp_tenants_menu_token_unique ON panapp_tenants (menu_token) WHERE menu_token IS NOT NULL"
         )
@@ -1197,13 +1199,14 @@ def superadmin_plans(_: Annotated[dict, Depends(require_superadmin)]):
 
 
 @app.get("/api/superadmin/tenants")
-def superadmin_tenants(_: Annotated[dict, Depends(require_superadmin)]):
+def superadmin_tenants(_: Annotated[dict, Depends(require_superadmin)], archived: bool = False):
     with connect_db() as connection:
         rows = connection.execute(
             """
             SELECT tenant.panaderia_id, tenant.slug, tenant.name, tenant.status, tenant.created_at, tenant.menu_token,
                    subscription.billing_period, subscription.status, plan.code, plan.name,
-                   plan.monthly_amount, plan.annual_amount, admin.username
+                   plan.monthly_amount, plan.annual_amount, admin.username,
+                   tenant.archived_at IS NOT NULL
             FROM panapp_tenants tenant
             LEFT JOIN LATERAL (
                 SELECT plan_id, billing_period, status, current_period_end
@@ -1219,9 +1222,10 @@ def superadmin_tenants(_: Annotated[dict, Depends(require_superadmin)]):
                 ORDER BY created_at DESC
                 LIMIT 1
             ) admin ON TRUE
+            WHERE (tenant.archived_at IS NOT NULL) = %s
             ORDER BY tenant.created_at DESC
             """,
-            (ROLE_ADMIN,),
+            (ROLE_ADMIN, archived),
         ).fetchall()
     return [
         {
@@ -1238,6 +1242,7 @@ def superadmin_tenants(_: Annotated[dict, Depends(require_superadmin)]):
             "monthly_amount": float(row[10]) if row[10] is not None else None,
             "annual_amount": float(row[11]) if row[11] is not None else None,
             "admin_email": row[12],
+            "archived": row[13],
         }
         for row in rows
     ]
@@ -1415,6 +1420,39 @@ def update_tenant_status(slug: str, body: TenantStatusBody, request: Request, _:
                 (uuid.UUID(tenant["id"]),),
             )
     return {"slug": slug, "status": body.status}
+
+
+@app.post("/api/superadmin/tenants/{slug}/archive")
+def archive_tenant(slug: str, request: Request, _: Annotated[dict, Depends(require_superadmin)]):
+    require_same_origin(request)
+    tenant = tenant_by_slug(slug, must_be_active=False)
+    tenant_id = uuid.UUID(tenant["id"])
+    with connect_db() as connection:
+        connection.execute(
+            "UPDATE panapp_tenants SET archived_at = NOW(), status = 'canceled' WHERE panaderia_id = %s",
+            (tenant_id,),
+        )
+        connection.execute(
+            "UPDATE panapp_subscriptions SET status = 'canceled' WHERE panaderia_id = %s AND status <> 'canceled'",
+            (tenant_id,),
+        )
+        connection.execute(
+            "UPDATE panapp_sessions SET expires_at = NOW() WHERE panaderia_id = %s",
+            (tenant_id,),
+        )
+    return {"slug": slug, "archived": True}
+
+
+@app.post("/api/superadmin/tenants/{slug}/restore")
+def restore_tenant(slug: str, request: Request, _: Annotated[dict, Depends(require_superadmin)]):
+    require_same_origin(request)
+    tenant = tenant_by_slug(slug, must_be_active=False)
+    with connect_db() as connection:
+        connection.execute(
+            "UPDATE panapp_tenants SET archived_at = NULL WHERE panaderia_id = %s",
+            (uuid.UUID(tenant["id"]),),
+        )
+    return {"slug": slug, "archived": False}
 
 
 @app.post("/api/superadmin/tenants/{slug}/payments")
