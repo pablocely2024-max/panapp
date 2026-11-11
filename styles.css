@@ -373,6 +373,121 @@ tr[hidden], .menu-product[hidden] { display: none !important; }
     .cart-bump, .store-product-card, .menu-product { animation: none !important; }
 }
 
+/* Product photos, loading states, and subtle interaction feedback */
+.product-image-cell { display: flex; min-width: 128px; align-items: center; gap: 9px; }
+.product-thumbnail, .product-thumbnail-placeholder { display: grid; width: 48px; height: 48px; flex: none; place-items: center; overflow: hidden; border: 1px solid var(--line); background: #edf1ed; color: #78857c; object-fit: cover; }
+.product-thumbnail-placeholder { font-size: 15px; }
+.product-image-button { padding: 6px 8px; border: 1px solid var(--line); background: #fff; color: var(--leaf); font-size: 10px; font-weight: 800; white-space: nowrap; }
+.product-dialog { width: min(620px, calc(100% - 24px)); max-height: 90vh; padding: 0; border: 1px solid var(--line); background: #fff; color: var(--ink); box-shadow: 0 24px 90px #12221950; }
+.product-dialog::backdrop { background: rgba(19, 31, 24, .58); backdrop-filter: blur(3px); }
+.product-dialog-form { display: grid; gap: 20px; padding: clamp(18px, 4vw, 30px); }
+.product-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.product-dialog-header h2 { margin: 4px 0 0; color: var(--ink); font-size: 25px; }
+.product-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.notification-card, .support-ticket, .maintenance-notice { padding: 17px; border: 1px solid var(--line); background: #fff; animation: enter 280ms ease both; }
+.notification-card h3 { margin: 0; color: var(--ink); font-size: 18px; }
+.notification-card p { margin: 8px 0; color: var(--ink-soft); font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
+.notification-card time { color: #718078; font-size: 11px; font-weight: 700; }
+.notification-skeleton, .menu-skeleton-image, .menu-skeleton-line { display: block; overflow: hidden; background: linear-gradient(100deg, #e8ece8 20%, #f8faf8 40%, #e8ece8 60%); background-size: 220% 100%; animation: skeleton-shimmer 1.4s ease-in-out infinite; }
+.notification-skeleton { height: 96px; border-radius: 12px; }
+.menu-skeleton-card { display: grid; gap: 11px; padding: 14px; border: 1px solid var(--line); background: #fff; }
+.menu-skeleton-image { aspect-ratio: 16 / 9; }
+.menu-skeleton-line { width: 100%; height: 12px; border-radius: 20px; }
+.menu-skeleton-line.short { width: 42%; }
+.menu-skeleton-line.medium { width: 68%; }
+@keyframes skeleton-shimmer { to { background-position: -220% 0; } }
+@keyframes enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+button:not(:disabled):hover { transform: translateY(-1px); }
+button:not(:disabled):active { transform: translateY(0) scale(.98); }
+
+/* Persistent light/dark theme shared across PANAPP pages */
+html[data-theme="dark"] { color-scheme: dark; --ink: #edf3ee; --ink-soft: #c1cdc4; --paper: #141a17; --line: #36423a; --leaf-soft: #263d32; }
+html[data-theme="dark"] body { background: #141a17 !important; color: #e6eee8 !important; }
+html[data-theme="dark"] body::before { background-image: radial-gradient(rgba(230, 238, 232, .045) .7px, transparent .7px); }
+html[data-theme="dark"] #appPrincipal { background: #141a17 !important; }
+html[data-theme="dark"] #appPrincipal main,
+html[data-theme="dark"] #appPrincipal main .bg-white,
+html[data-theme="dark"] .company-settings-form,
+html[data-theme="dark"] .security-status-panel,
+html[data-theme="dark"] .report-panel,
+html[data-theme="dark"] .report-metrics,
+html[data-theme="dark"] .product-dialog,
+html[data-theme="dark"] .cart-dialog,
+html[data-theme="dark"] .customization-dialog,
+html[data-theme="dark"] .menu-skeleton-card,
+html[data-theme="dark"] .notification-card,
+html[data-theme="dark"] .support-ticket,
+html[data-theme="dark"] .maintenance-notice,
+html[data-theme="dark"] #dashboardPanel > section,
+html[data-theme="dark"] #loginPanel { background-color: #1d2621 !important; color: #e6eee8 !important; border-color: #36423a !important; }
+html[data-theme="dark"] #appPrincipal main .bg-slate-50,
+html[data-theme="dark"] #appPrincipal main .bg-gray-50,
+html[data-theme="dark"] .report-button-light,
+html[data-theme="dark"] .store-cart-button,
+html[data-theme="dark"] .custom-option select,
+html[data-theme="dark"] .order-field input,
+html[data-theme="dark"] .cart-quantity button,
+html[data-theme="dark"] .order-mode-options span { background-color: #26312a !important; color: #e6eee8 !important; border-color: #46534a !important; }
+html[data-theme="dark"] #appPrincipal main h2,
+html[data-theme="dark"] #appPrincipal main h3,
+html[data-theme="dark"] #appPrincipal main .text-slate-800,
+html[data-theme="dark"] #appPrincipal main .text-slate-700,
+html[data-theme="dark"] #appPrincipal main .text-gray-800,
+html[data-theme="dark"] #appPrincipal main .text-gray-700,
+html[data-theme="dark"] #dashboardPanel h1,
+html[data-theme="dark"] #dashboardPanel h2,
+html[data-theme="dark"] #dashboardPanel h3,
+html[data-theme="dark"] #dashboardPanel strong,
+html[data-theme="dark"] #loginPanel h1 { color: #edf3ee !important; }
+html[data-theme="dark"] #appPrincipal main p,
+html[data-theme="dark"] #appPrincipal main label,
+html[data-theme="dark"] #appPrincipal main td,
+html[data-theme="dark"] #dashboardPanel p,
+html[data-theme="dark"] #dashboardPanel label,
+html[data-theme="dark"] #loginPanel p { color: #bdc9c0; }
+html[data-theme="dark"] #appPrincipal input,
+html[data-theme="dark"] #appPrincipal select,
+html[data-theme="dark"] #appPrincipal textarea,
+html[data-theme="dark"] #dashboardPanel input,
+html[data-theme="dark"] #dashboardPanel select,
+html[data-theme="dark"] #dashboardPanel textarea { background-color: #151d18 !important; color: #edf3ee !important; border-color: #46534a !important; }
+html[data-theme="dark"] #appPrincipal th,
+html[data-theme="dark"] #dashboardPanel th { color: #b7c3ba; background-color: #202a24; }
+html[data-theme="dark"] #appPrincipal .border-gray-50,
+html[data-theme="dark"] #appPrincipal .border-gray-100,
+html[data-theme="dark"] #appPrincipal .border-gray-200,
+html[data-theme="dark"] #dashboardPanel .border-slate-100,
+html[data-theme="dark"] #dashboardPanel .border-slate-200 { border-color: #36423a !important; }
+html[data-theme="dark"] .glass-panel { background: rgba(29, 38, 33, .97); color: #e6eee8; }
+html[data-theme="dark"] #vistaMenuPublico { background: #141a17 !important; color: #e6eee8; }
+html[data-theme="dark"] .store-header,
+html[data-theme="dark"] .store-product-card,
+html[data-theme="dark"] .store-product-info,
+html[data-theme="dark"] .store-cart-button,
+html[data-theme="dark"] .cart-dialog,
+html[data-theme="dark"] .customization-dialog { background: #1d2621 !important; color: #e6eee8 !important; border-color: #36423a !important; }
+html[data-theme="dark"] .store-brand,
+html[data-theme="dark"] .store-product-info h3,
+html[data-theme="dark"] .store-product-buy strong,
+html[data-theme="dark"] .cart-head h2,
+html[data-theme="dark"] .cart-line strong,
+html[data-theme="dark"] .cart-total,
+html[data-theme="dark"] .cart-total strong { color: #edf3ee !important; }
+html[data-theme="dark"] .store-product-info p,
+html[data-theme="dark"] .store-footer,
+html[data-theme="dark"] .store-section-heading p,
+html[data-theme="dark"] .cart-line span { color: #bdc9c0 !important; }
+html[data-theme="dark"] .store-category,
+html[data-theme="dark"] .store-search,
+html[data-theme="dark"] .store-search input,
+html[data-theme="dark"] .store-location-banner { background-color: #202a24 !important; color: #e6eee8 !important; border-color: #36423a !important; }
+html[data-theme="dark"] .store-category.is-active { background: #d04a35 !important; color: #fff !important; }
+html[data-theme="dark"] .store-product-buy button { background: #263d32; color: #d7eee0; }
+html[data-theme="dark"] .store-footer { border-color: #36423a; }
+html[data-theme="dark"] .menu-skeleton-image,
+html[data-theme="dark"] .menu-skeleton-line,
+html[data-theme="dark"] .notification-skeleton { background-image: linear-gradient(100deg, #29342d 20%, #39453d 40%, #29342d 60%); }
+
 @media print {
     body::before, #appPrincipal aside, .no-print, #filtroGlobal { display: none !important; }
     #appPrincipal main { overflow: visible !important; }
