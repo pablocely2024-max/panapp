@@ -56,7 +56,15 @@ body::before {
 #pantallaLogin .swarm-cursor-canvas { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; pointer-events: none; opacity: .76; }
 #pantallaLogin .glass-panel { position: relative; z-index: 10; }
 .glass-panel { background: rgba(255, 255, 255, 0.97); backdrop-filter: blur(12px); border-radius: 8px !important; }
-#appPrincipal aside { background: var(--ink) !important; }
+#appPrincipal aside {
+    max-height: 100vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-right: 1px solid var(--line);
+    background: #fff !important;
+    color: var(--ink);
+}
+#appPrincipal aside > div { flex-shrink: 0; }
 #appPrincipal main { background: var(--paper); }
 #appPrincipal .bg-white { border-radius: 8px !important; }
 #appPrincipal .rounded-2xl, #appPrincipal .rounded-3xl { border-radius: 8px !important; }
@@ -79,9 +87,9 @@ body::before {
     white-space: nowrap;
 }
 .stock-pill { color: #3b4b43; background: #edf1ed; }
-.server-status { max-width: 185px; overflow: hidden; color: #f0c46e; font-size: 9px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.server-status.server-connected { color: #8dd2a8; }
-.server-status.server-disconnected { color: #f0c46e; }
+.server-status { max-width: 185px; overflow: hidden; color: #8b5512; font-size: 9px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.server-status.server-connected { color: #23634f; }
+.server-status.server-disconnected { color: #8b5512; }
 .stock-pill.stock-low { color: #a33929; background: #fce9e4; }
 .status-active, .status-paid, .status-done { color: #23634f; background: #e3f1e9; }
 .status-inactive { color: #5b665f; background: #edf0ed; }
@@ -309,7 +317,7 @@ tr[hidden], .menu-product[hidden] { display: none !important; }
 
 @media (max-width: 767px) {
     #appPrincipal { height: auto; min-height: 100vh; flex-direction: column; overflow: visible; }
-    #appPrincipal aside { position: sticky; top: 0; width: 100%; flex: none; }
+    #appPrincipal aside { position: sticky; top: 0; width: 100%; max-height: none; flex: none; overflow: visible; }
     #appPrincipal aside > div:first-child { display: block !important; width: 100%; min-width: 0; }
     #appPrincipal #navMenu { display: flex; width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: auto; padding-top: 0; }
     #appPrincipal #navMenu button { width: auto; min-width: max-content; padding: 10px 12px; }
