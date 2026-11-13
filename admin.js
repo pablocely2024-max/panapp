@@ -545,7 +545,7 @@ function mostrarModulo(idModulo, boton) {
     });
     document.getElementById(idModulo)?.classList.replace('hidden', 'block');
     document.querySelectorAll('.menu-btn').forEach(elemento => {
-        elemento.className = 'w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-400 hover:text-white hover:bg-slate-800 flex items-center gap-3 transition-all menu-btn';
+        elemento.className = 'w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-gray-600 hover:text-slate-900 hover:bg-gray-100 flex items-center gap-3 transition-all menu-btn';
     });
     if (boton) {
         boton.className = 'w-full text-left px-4 py-3 rounded-xl text-sm font-bold bg-brand-600 text-white shadow-md flex items-center gap-3 transition-all menu-btn';

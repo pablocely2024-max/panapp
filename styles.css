@@ -63,8 +63,13 @@ body::before {
     border-right: 1px solid var(--line);
     background: #fff !important;
     color: var(--ink);
+    scrollbar-color: #9ca3af #f3f4f6;
+    scrollbar-width: thin;
 }
 #appPrincipal aside > div { flex-shrink: 0; }
+#appPrincipal aside::-webkit-scrollbar { width: 8px; }
+#appPrincipal aside::-webkit-scrollbar-track { background: #f3f4f6; }
+#appPrincipal aside::-webkit-scrollbar-thumb { border-radius: 8px; background: #9ca3af; }
 #appPrincipal main { background: var(--paper); }
 #appPrincipal .bg-white { border-radius: 8px !important; }
 #appPrincipal .rounded-2xl, #appPrincipal .rounded-3xl { border-radius: 8px !important; }
