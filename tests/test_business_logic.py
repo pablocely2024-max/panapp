@@ -43,10 +43,61 @@ from saas_app import (
     verify_legacy_tenant_credentials,
     neon_tenant_login,
     verify_neon_access_token,
+    verify_turnstile,
     current_session,
     SESSION_IDLE_TIMEOUT_MINUTES,
     TENANT_SESSION_COOKIE,
 )
+
+
+class TurnstileVerificationTests(unittest.TestCase):
+    def request(self):
+        return Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/api/security/login",
+            "headers": [(b"host", b"testserver")],
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "client": ("127.0.0.1", 1234),
+            "query_string": b"",
+        })
+
+    def test_requires_server_secret_and_token(self):
+        with patch("saas_app.TURNSTILE_SECRET_KEY", ""):
+            with self.assertRaises(HTTPException) as error:
+                verify_turnstile("captcha-token", self.request())
+        self.assertEqual(error.exception.status_code, 503)
+
+        with patch("saas_app.TURNSTILE_SECRET_KEY", "server-secret"):
+            with self.assertRaises(HTTPException) as error:
+                verify_turnstile("", self.request())
+        self.assertEqual(error.exception.status_code, 403)
+
+    @patch("saas_app.urllib_request.urlopen")
+    def test_accepts_token_verified_by_cloudflare(self, urlopen):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"success": true}'
+        urlopen.return_value = response
+
+        with patch("saas_app.TURNSTILE_SECRET_KEY", "server-secret"):
+            verify_turnstile("captcha-token", self.request())
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://challenges.cloudflare.com/turnstile/v0/siteverify")
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 5)
+
+    @patch("saas_app.urllib_request.urlopen")
+    def test_rejects_token_not_verified_by_cloudflare(self, urlopen):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"success": false}'
+        urlopen.return_value = response
+
+        with patch("saas_app.TURNSTILE_SECRET_KEY", "server-secret"):
+            with self.assertRaises(HTTPException) as error:
+                verify_turnstile("invalid-token", self.request())
+
+        self.assertEqual(error.exception.status_code, 403)
 
 
 class SlugValidationTests(unittest.TestCase):

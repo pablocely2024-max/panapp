@@ -6,6 +6,7 @@ let availablePlans = [];
 let archivedTenantsView = false;
 let inactivityTimer = null;
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+let superadminCaptchaToken = '';
 
 async function api(path, options = {}) {
     if (window.location.protocol === 'file:') {
@@ -596,17 +597,24 @@ document.getElementById('loginForm').addEventListener('submit', async event => {
     event.preventDefault();
     const error = document.getElementById('loginError');
     error.classList.add('hidden');
+    if (!superadminCaptchaToken) {
+        showMessage(error, 'Completa la verificación de seguridad.', true);
+        return;
+    }
     try {
         await api('/api/superadmin/login', {
             method: 'POST',
             body: JSON.stringify({
                 username: document.getElementById('loginEmail').value.trim(),
-                password: document.getElementById('loginPassword').value
+                password: document.getElementById('loginPassword').value,
+                captcha_token: superadminCaptchaToken
             })
         });
         await showDashboard();
     } catch (requestError) {
         showMessage(error, requestError.message || 'No se pudo iniciar sesión.', true);
+        superadminCaptchaToken = '';
+        if (window.turnstile) window.turnstile.reset('#superadminCaptcha');
     }
 });
 
@@ -724,3 +732,36 @@ if (new URLSearchParams(window.location.search).get('session') === 'expired') {
     showMessage(document.getElementById('loginError'), 'La sesión se cerró después de cinco minutos sin actividad.', true);
 }
 checkSession();
+
+async function initializeSuperadminCaptcha() {
+    try {
+        const response = await fetch('/api/security/captcha', { cache: 'no-store' });
+        const config = await response.json();
+        if (!response.ok) throw new Error(config.detail || 'No se pudo cargar la verificación.');
+
+        const renderCaptcha = () => {
+            if (!window.turnstile) return false;
+            window.turnstile.render('#superadminCaptcha', {
+                sitekey: config.site_key,
+                callback: token => {
+                    superadminCaptchaToken = token;
+                },
+                'expired-callback': () => {
+                    superadminCaptchaToken = '';
+                }
+            });
+            return true;
+        };
+        if (!renderCaptcha()) {
+            let attempts = 0;
+            const interval = window.setInterval(() => {
+                attempts += 1;
+                if (renderCaptcha() || attempts >= 50) window.clearInterval(interval);
+            }, 100);
+        }
+    } catch (error) {
+        showMessage(document.getElementById('loginError'), error.message, true);
+    }
+}
+
+initializeSuperadminCaptcha();

@@ -10,11 +10,12 @@ const errorMessage = document.getElementById('authError');
 const instructions = document.getElementById('authInstructions');
 const adminSetupLink = document.getElementById('adminSetupLink');
 let tenantConfigured = false;
+let captchaToken = '';
 
 function updateSubmitState() {
     const validEmail = emailInput.value.trim() && emailInput.checkValidity();
     submitButton.disabled = !validEmail || passwordInput.value.length === 0
-        || (!globalLogin && !tenantConfigured);
+        || !captchaToken || (!globalLogin && !tenantConfigured);
 }
 
 function showError(message) {
@@ -80,11 +81,15 @@ form.addEventListener('submit', async event => {
     try {
         const result = await postAuth('/api/security/login', {
             username: email,
-            password: passwordInput.value
+            password: passwordInput.value,
+            captcha_token: captchaToken
         });
         redirectToAdmin(result);
     } catch (error) {
         showError(error.message || 'No se pudo validar el acceso.');
+        captchaToken = '';
+        if (window.turnstile) window.turnstile.reset('#authCaptcha');
+        updateSubmitState();
     } finally {
         submitButton.textContent = 'Entrar al panel';
         updateSubmitState();
@@ -102,3 +107,38 @@ document.getElementById('togglePassword').addEventListener('click', event => {
 });
 
 checkSession();
+
+async function initializeCaptcha() {
+    try {
+        const response = await fetch(tenantPath('/api/security/captcha'), { cache: 'no-store' });
+        const config = await response.json();
+        if (!response.ok) throw new Error(config.detail || 'No se pudo cargar la verificación.');
+
+        const renderCaptcha = () => {
+            if (!window.turnstile) return false;
+            window.turnstile.render('#authCaptcha', {
+                sitekey: config.site_key,
+                callback: token => {
+                    captchaToken = token;
+                    updateSubmitState();
+                },
+                'expired-callback': () => {
+                    captchaToken = '';
+                    updateSubmitState();
+                }
+            });
+            return true;
+        };
+        if (!renderCaptcha()) {
+            let attempts = 0;
+            const interval = window.setInterval(() => {
+                attempts += 1;
+                if (renderCaptcha() || attempts >= 50) window.clearInterval(interval);
+            }, 100);
+        }
+    } catch (error) {
+        showError(error.message || 'No se pudo cargar la verificación de seguridad.');
+    }
+}
+
+initializeCaptcha();

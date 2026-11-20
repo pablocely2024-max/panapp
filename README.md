@@ -40,6 +40,17 @@ To start the app directly with Uvicorn from PowerShell:
 
 Store the PostgreSQL connection string as `DATABASE_URL` in the ignored `.env.local` file. The project Python environment must be installed and usable before running this command. FastAPI initializes/migrates the database schema on application startup.
 
+### Bot protection for sign-in
+
+The bakery and Super Admin sign-in forms use Cloudflare Turnstile. Configure the site key and secret key as server environment variables before starting PANAPP:
+
+```text
+PANAPP_TURNSTILE_SITE_KEY
+PANAPP_TURNSTILE_SECRET_KEY
+```
+
+Create the keys in the Cloudflare Turnstile dashboard for the domains where PANAPP runs. The site key is returned to the browser; the secret key must stay in the server environment and must never be committed. Sign-in is blocked when either key is missing or the server cannot verify a challenge.
+
 ### HTTPS on this computer (local development)
 
 To open the same local PANAPP pages using a browser-trusted `https://localhost` certificate, install `mkcert` and its local development CA:
