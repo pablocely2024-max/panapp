@@ -16,8 +16,6 @@ import threading
 import time
 import uuid
 import csv
-from urllib import request as urllib_request
-from urllib.error import HTTPError, URLError
 from email.message import EmailMessage
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -131,9 +129,6 @@ NEON_AUTH_ISSUER = os.environ.get("PANAPP_NEON_AUTH_ISSUER", NEON_AUTH_URL).stri
 NEON_AUTH_AUDIENCE = os.environ.get("PANAPP_NEON_AUTH_AUDIENCE", "authenticated").strip()
 NEON_AUTH_JWKS_URL = f"{NEON_AUTH_URL}/.well-known/jwks.json" if NEON_AUTH_URL else ""
 neon_jwks_client = PyJWKClient(NEON_AUTH_JWKS_URL, cache_keys=True, timeout=5) if NEON_AUTH_JWKS_URL else None
-TURNSTILE_SITE_KEY = os.environ.get("PANAPP_TURNSTILE_SITE_KEY", "").strip()
-TURNSTILE_SECRET_KEY = os.environ.get("PANAPP_TURNSTILE_SECRET_KEY", "").strip()
-TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 TENANT_SESSION_COOKIE = "panapp_tenant_session"
@@ -273,37 +268,6 @@ def record_login_failure(address: str) -> None:
 def clear_login_failures(address: str) -> None:
     with auth_lock:
         failed_logins.pop(address, None)
-
-
-def verify_turnstile(token: str, request: Request) -> None:
-    if not TURNSTILE_SECRET_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="La verificación de seguridad no está configurada en el servidor.",
-        )
-    if not token:
-        raise HTTPException(status_code=403, detail="Completa la verificación de seguridad.")
-
-    payload = {"secret": TURNSTILE_SECRET_KEY, "response": token}
-    if request.client:
-        payload["remoteip"] = request.client.host
-    verify_request = urllib_request.Request(
-        TURNSTILE_VERIFY_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib_request.urlopen(verify_request, timeout=5) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError, ValueError):
-        logging.exception("No se pudo verificar Turnstile.")
-        raise HTTPException(
-            status_code=503,
-            detail="No se pudo validar la comprobación de seguridad. Inténtalo de nuevo.",
-        ) from None
-    if not isinstance(result, dict) or result.get("success") is not True:
-        raise HTTPException(status_code=403, detail="La verificación de seguridad no fue válida.")
 
 
 def hash_token(token: str) -> str:
@@ -1110,7 +1074,6 @@ def asset(name: str) -> FileResponse:
 class LoginBody(BaseModel):
     username: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=256)
-    captcha_token: str = Field(default="", max_length=4096)
 
 
 class TenantCreateBody(BaseModel):
@@ -1240,7 +1203,6 @@ def superadmin_status(request: Request):
 @app.post("/api/superadmin/login")
 def superadmin_login(body: LoginBody, request: Request, response: Response):
     require_same_origin(request)
-    verify_turnstile(body.captcha_token, request)
     address = request.client.host if request.client else "unknown"
     if not allow_login_attempt(address):
         raise HTTPException(status_code=429, detail="Demasiados intentos. Espera 15 minutos.")
@@ -2024,18 +1986,6 @@ def tenant_auth_provider(slug: str | None = None):
     return {"provider": "neon", "auth_url": NEON_AUTH_URL}
 
 
-@app.get("/api/security/captcha")
-@app.get("/t/{slug}/api/security/captcha")
-def captcha_configuration(slug: str | None = None):
-    if slug:
-        tenant_by_slug(slug)
-    if not TURNSTILE_SITE_KEY or not TURNSTILE_SECRET_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="Configura PANAPP_TURNSTILE_SITE_KEY y PANAPP_TURNSTILE_SECRET_KEY en el entorno del servidor.",
-        )
-    return {"provider": "turnstile", "site_key": TURNSTILE_SITE_KEY}
-
 
 @app.post("/api/security/neon/session")
 @app.post("/t/{slug}/api/security/neon/session")
@@ -2250,7 +2200,6 @@ def global_security_status(request: Request):
 @app.post("/api/security/login")
 def global_tenant_login(body: LoginBody, request: Request, response: Response):
     require_same_origin(request)
-    verify_turnstile(body.captcha_token, request)
     address = request.client.host if request.client else "unknown"
     if not allow_login_attempt(address):
         raise HTTPException(status_code=429, detail="Demasiados intentos. Espera 15 minutos.")
@@ -2303,7 +2252,6 @@ def global_tenant_login(body: LoginBody, request: Request, response: Response):
 @app.post("/t/{slug}/api/security/login")
 def tenant_login(slug: str, body: LoginBody, request: Request, response: Response):
     require_same_origin(request)
-    verify_turnstile(body.captcha_token, request)
     tenant = tenant_by_slug(slug)
     address = request.client.host if request.client else "unknown"
     if not allow_login_attempt(address):

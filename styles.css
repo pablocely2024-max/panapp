@@ -510,6 +510,45 @@ html[data-theme="dark"] .menu-skeleton-image,
 html[data-theme="dark"] .menu-skeleton-line,
 html[data-theme="dark"] .notification-skeleton { background-image: linear-gradient(100deg, #29342d 20%, #39453d 40%, #29342d 60%); }
 
+/* Authentication and Super Admin panels */
+html[data-theme="dark"] #authPanel,
+html[data-theme="dark"] #loginPanel {
+    background: #1d2621 !important;
+    color: #e6eee8 !important;
+    border-color: #36423a !important;
+}
+html[data-theme="dark"] #authPanel h1,
+html[data-theme="dark"] #authPanel h2,
+html[data-theme="dark"] #authPanel .text-slate-900,
+html[data-theme="dark"] #loginPanel h1,
+html[data-theme="dark"] #loginPanel .text-slate-900 { color: #edf3ee !important; }
+html[data-theme="dark"] #authPanel p,
+html[data-theme="dark"] #authPanel label,
+html[data-theme="dark"] #authPanel .text-slate-600,
+html[data-theme="dark"] #authPanel .text-slate-500,
+html[data-theme="dark"] #loginPanel p,
+html[data-theme="dark"] #loginPanel label,
+html[data-theme="dark"] #loginPanel .text-slate-600,
+html[data-theme="dark"] #loginPanel .text-slate-500 { color: #bdc9c0 !important; }
+html[data-theme="dark"] #authPanel input,
+html[data-theme="dark"] #loginPanel input {
+    background: #151d18 !important;
+    color: #edf3ee !important;
+    border-color: #46534a !important;
+}
+html[data-theme="dark"] #authPanel input::placeholder,
+html[data-theme="dark"] #loginPanel input::placeholder { color: #8f9b93 !important; }
+html[data-theme="dark"] #authPanel [data-theme-toggle],
+html[data-theme="dark"] #loginPanel [data-theme-toggle] {
+    background: #26312a !important;
+    color: #edf3ee !important;
+    border-color: #46534a !important;
+}
+html[data-theme="dark"] #authPanel .border-slate-100,
+html[data-theme="dark"] #authPanel .border-slate-200,
+html[data-theme="dark"] #loginPanel .border-slate-100,
+html[data-theme="dark"] #loginPanel .border-slate-200 { border-color: #36423a !important; }
+
 @media print {
     body::before, #appPrincipal aside, .no-print, #filtroGlobal { display: none !important; }
     #appPrincipal main { overflow: visible !important; }
