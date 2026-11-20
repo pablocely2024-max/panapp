@@ -548,6 +548,15 @@ html[data-theme="dark"] #authPanel .border-slate-100,
 html[data-theme="dark"] #authPanel .border-slate-200,
 html[data-theme="dark"] #loginPanel .border-slate-100,
 html[data-theme="dark"] #loginPanel .border-slate-200 { border-color: #36423a !important; }
+html[data-theme="dark"] #authPage .text-slate-900,
+html[data-theme="dark"] #authPage .text-slate-800,
+html[data-theme="dark"] #authPage .text-slate-700 { color: #edf3ee !important; }
+html[data-theme="dark"] #authPage .text-slate-600,
+html[data-theme="dark"] #authPage .text-slate-500,
+html[data-theme="dark"] #authPage .text-slate-400 { color: #bdc9c0 !important; }
+html[data-theme="dark"] #authPage .bg-slate-50,
+html[data-theme="dark"] #authPage .bg-slate-100 { background-color: #26312a !important; }
+html[data-theme="dark"] #authPage .bg-white { background-color: #1d2621 !important; }
 
 @media print {
     body::before, #appPrincipal aside, .no-print, #filtroGlobal { display: none !important; }
